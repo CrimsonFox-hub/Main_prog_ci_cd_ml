@@ -1,0 +1,216 @@
+# Конфигурация API сервера
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  reload: false
+  access_log: true
+  timeout: 30
+  max_requests: 10000
+  max_requests_jitter: 1000
+  
+  cors:
+    enable: true
+    allow_origins: ["*"]
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+    allow_credentials: true
+
+api:
+  version: "v1"
+  title: "Credit Scoring API"
+  description: "API для кредитного скоринга с использованием ML моделей"
+  docs_url: "/docs"
+  redoc_url: "/redoc"
+  
+  endpoints:
+    predict: "/api/v1/predict"
+    batch_predict: "/api/v1/predict/batch"
+    health: "/api/v1/health"
+    metrics: "/api/v1/metrics"
+    model_info: "/api/v1/model"
+    
+  rate_limiting:
+    enable: true
+    requests_per_minute: 60
+    burst_limit: 10
+    
+  authentication:
+    enable: true
+    method: "api_key"
+    header_name: "X-API-Key"
+    
+  validation:
+    request_size_limit: "10MB"
+    max_batch_size: 1000
+    enable_schema_validation: true
+
+model:
+  path: "models/trained/credit_scoring.onnx"
+  fallback_path: "models/trained/credit_scoring_quantized.onnx"
+  cache_size: 1000
+  cache_ttl_seconds: 300
+  
+  input_schema:
+    age: {type: "integer", min: 18, max: 100}
+    income: {type: "number", min: 0}
+    credit_amount: {type: "number", min: 0}
+    loan_duration: {type: "integer", min: 1, max: 120}
+    payment_to_income: {type: "number", min: 0, max: 1}
+    existing_credits: {type: "integer", min: 0, max: 10}
+    dependents: {type: "integer", min: 0, max: 10}
+    residence_since: {type: "integer", min: 0, max: 50}
+    installment_rate: {type: "number", min: 1, max: 4}
+    credit_history: {type: "string", enum: ["A30", "A31", "A32", "A33", "A34"]}
+    purpose: {type: "string", enum: ["A40", "A41", "A42", "A43", "A44", "A45", "A46", "A48", "A49", "A410"]}
+    savings: {type: "string", enum: ["A61", "A62", "A63", "A64", "A65"]}
+    employment_duration: {type: "string", enum: ["A71", "A72", "A73", "A74", "A75"]}
+    personal_status: {type: "string", enum: ["A91", "A92", "A93", "A94"]}
+    debtors: {type: "string", enum: ["A101", "A102", "A103"]}
+    property: {type: "string", enum: ["A121", "A122", "A123", "A124"]}
+    other_installment_plans: {type: "string", enum: ["A141", "A142", "A143"]}
+    housing: {type: "string", enum: ["A151", "A152", "A153"]}
+    job: {type: "string", enum: ["A171", "A172", "A173", "A174"]}
+    telephone: {type: "string", enum: ["A191", "A192"]}
+    foreign_worker: {type: "string", enum: ["A201", "A202"]}
+    
+  output_schema:
+    prediction: {type: "number", description: "Probability of default (0-1)"}
+    score: {type: "integer", description: "Credit score (300-850)"}
+    risk_category: {type: "string", enum: ["low", "medium", "high"]}
+    explanation: {type: "object", description: "SHAP feature importance"}
+    confidence: {type: "number", description: "Model confidence (0-1)"}
+
+monitoring:
+  enable: true
+  
+  metrics:
+    - name: "inference_latency"
+      type: "histogram"
+      help: "Inference latency in seconds"
+      buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
+      
+    - name: "request_count"
+      type: "counter"
+      help: "Total number of requests"
+      labels: ["endpoint", "status_code"]
+      
+    - name: "error_count"
+      type: "counter"
+      help: "Total number of errors"
+      labels: ["error_type"]
+      
+    - name: "active_connections"
+      type: "gauge"
+      help: "Number of active connections"
+  
+  logging:
+    enable_request_logging: true
+    log_predictions: false  # Для GDPR, не логируем персональные данные
+    anonymize_logs: true
+    anonymization_salt: "your-secret-salt"
+
+cache:
+  enable: true
+  type: "redis"
+  
+  redis:
+    host: "redis-master.redis.svc.cluster.local"
+    port: 6379
+    password_secret: "redis-password"
+    db: 0
+    ttl_seconds: 300
+    max_connections: 100
+    
+  memory:
+    max_size_mb: 100
+    ttl_seconds: 60
+
+features:
+  enable_feature_store: false
+  feature_store_url: "http://feature-store:8080"
+  
+  transformations:
+    enable_scaling: true
+    scaler_path: "models/trained/scaler.pkl"
+    
+    categorical_encoding:
+      method: "onehot"
+      unknown_value: "other"
+    
+    feature_engineering:
+      - name: "debt_to_income"
+        formula: "credit_amount / income"
+        
+      - name: "age_group"
+        formula: |
+          case
+            when age < 25 then 'young'
+            when age between 25 and 40 then 'adult'
+            when age between 40 and 60 then 'middle_aged'
+            else 'senior'
+          end
+
+security:
+  ssl:
+    enable: false
+    cert_path: "/etc/ssl/certs/cert.pem"
+    key_path: "/etc/ssl/private/key.pem"
+    
+  headers:
+    enable_security_headers: true
+    hsts_max_age: 31536000
+    content_security_policy: "default-src 'self'"
+    x_frame_options: "DENY"
+    x_content_type_options: "nosniff"
+    
+  input_validation:
+    max_request_size: "10MB"
+    max_array_size: 1000
+    max_string_length: 10000
+    
+  sanitization:
+    enable_html_sanitization: true
+    enable_sql_injection_protection: true
+    enable_xss_protection: true
+
+health:
+  liveness_path: "/health/live"
+  readiness_path: "/health/ready"
+  startup_path: "/health/startup"
+  
+  checks:
+    - name: "model_loaded"
+      type: "model"
+      
+    - name: "cache_connection"
+      type: "cache"
+      
+    - name: "database_connection"
+      type: "database"
+      optional: true
+      
+    - name: "feature_store"
+      type: "external_service"
+      endpoint: "http://feature-store:8080/health"
+      timeout: 5
+      optional: true
+
+environments:
+  development:
+    debug: true
+    cors_allow_origins: ["*"]
+    log_level: "DEBUG"
+    enable_swagger: true
+    
+  staging:
+    debug: false
+    cors_allow_origins: ["https://staging.your-bank.com"]
+    log_level: "INFO"
+    enable_swagger: true
+    
+  production:
+    debug: false
+    cors_allow_origins: ["https://your-bank.com"]
+    log_level: "WARNING"
+    enable_swagger: false
