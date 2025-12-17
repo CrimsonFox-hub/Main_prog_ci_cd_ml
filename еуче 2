@@ -1,0 +1,18 @@
+# 1. Убедитесь, что виртуальное окружение активировано
+venv\Scripts\activate
+
+# 2. Создайте структуру проекта (если еще не создана)
+make create-structure
+
+# 3. Скачайте или создайте данные
+python scripts\data\download_data.py --use-sample
+
+# 4. Обработайте данные
+python scripts\data\process_data.py --input data/raw/credit_data.csv --feature-engineering
+
+# 5. Протестируйте упрощенное обучение
+python src\ml_pipeline\training\train_model_simple.py
+
+# ИЛИ используйте Make команды:
+make data-download  # Это создаст тестовые данные
+make train-simple   # Это запустит упрощенное обучение

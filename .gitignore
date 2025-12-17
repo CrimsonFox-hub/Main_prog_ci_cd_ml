@@ -1,0 +1,23 @@
+# Виртуальное окружение
+.venv/
+venv/
+env/
+ENV/
+
+# Питоновские кэш-файлы
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Прочие временные файлы
+*.log
+*.sqlite3
+*.db
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

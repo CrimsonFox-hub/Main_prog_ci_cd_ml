@@ -1,0 +1,9 @@
+{
+  "dataset": "German Credit",
+  "samples": 1000,
+  "features": 20,
+  "positive_class_ratio": 0.3,
+  "train_samples": 800,
+  "test_samples": 200,
+  "download_date": "2025-12-16T23:28:11.195311"
+}

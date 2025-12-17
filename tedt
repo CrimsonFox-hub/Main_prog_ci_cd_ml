@@ -1,6 +1,6 @@
 # 1. Клонирование репозитория
-git clone https://github.com/your-org/mlops-credit-scoring
-cd mlops-credit-scoring
+git clone https://github.com/your-org/Main_prog_ci_cd_ml
+cd Main_prog_ci_cd_ml
 
 # 2. Инициализация проекта
 make init
@@ -19,8 +19,8 @@ dvc remote modify minio secret_access_key minioadmin
 Этап 0: Подготовка (10 минут)
 bash
 # 1. Клонирование репозитория
-git clone https://github.com/your-org/mlops-credit-scoring
-cd mlops-credit-scoring
+git clone https://github.com/your-org/Main_prog_ci_cd_ml
+cd Main_prog_ci_cd_ml
 
 # 2. Инициализация проекта
 make init
