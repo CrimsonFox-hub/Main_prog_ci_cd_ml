@@ -67,14 +67,14 @@ def main():
         'dependents': np.random.randint(0, 5, n_samples),
         'residence_since': np.random.randint(0, 20, n_samples),
         'installment_rate': np.random.uniform(1.0, 4.0, n_samples),
-        'default': np.random.binomial(1, 0.3, n_samples)
+        'target': np.random.binomial(1, 0.3, n_samples)
     }
     
     df = pd.DataFrame(data)
     
     # Разделение на train/test
     train_df, test_df = train_test_split(
-        df, test_size=0.2, random_state=42, stratify=df['default']
+        df, test_size=0.2, random_state=42, stratify=df['target']
     )
     
     # Сохранение
@@ -82,8 +82,8 @@ def main():
     test_df.to_csv("data/processed/test.csv", index=False)
     
     print(f"   Создано {len(train_df)} train и {len(test_df)} test образцов")
-    print(f"   Дефолтов в train: {train_df['default'].mean():.2%}")
-    print(f"   Дефолтов в test: {test_df['default'].mean():.2%}")
+    print(f"   Дефолтов в train: {train_df['target'].mean():.2%}")
+    print(f"   Дефолтов в test: {test_df['target'].mean():.2%}")
     
     # 3. Создание конфигурации
     print("\n3. Создание конфигурации...")
@@ -93,7 +93,7 @@ def main():
 
 data:
   train_path: "data/processed/train.csv"
-  target_column: "default"
+  target_column: "target"
   
 model:
   name: "SimpleCreditNN"
@@ -153,8 +153,8 @@ print("Загрузка данных...")
 train_df = pd.read_csv("data/processed/train.csv")
 
 # Подготовка данных
-X = train_df.drop(columns=['default']).values.astype(np.float32)
-y = train_df['default'].values.astype(np.float32)
+X = train_df.drop(columns=['target']).values.astype(np.float32)
+y = train_df['target'].values.astype(np.float32)
 
 # Масштабирование
 scaler = StandardScaler()
@@ -194,13 +194,13 @@ for epoch in range(10):
 
 # Сохранение модели
 torch.save(model.state_dict(), "models/trained/model.pth")
-print("✅ Модель сохранена: models/trained/model.pth")
+print("Модель сохранена: models/trained/model.pth")
 
 # Тестирование
 print("\\nТестирование...")
 test_df = pd.read_csv("data/processed/test.csv")
-X_test = test_df.drop(columns=['default']).values.astype(np.float32)
-y_test = test_df['default'].values.astype(np.float32)
+X_test = test_df.drop(columns=['target']).values.astype(np.float32)
+y_test = test_df['target'].values.astype(np.float32)
 X_test_scaled = scaler.transform(X_test)
 
 model.eval()

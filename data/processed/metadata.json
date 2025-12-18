@@ -1,0 +1,22 @@
+{
+  "original_samples": 1000,
+  "processed_samples": 1000,
+  "train_samples": 800,
+  "test_samples": 200,
+  "features": 48,
+  "numerical_features": 7,
+  "categorical_features": 13,
+  "target_distribution": {
+    "train": {
+      "positive": 240,
+      "negative": 560,
+      "ratio": 0.3
+    },
+    "test": {
+      "positive": 60,
+      "negative": 140,
+      "ratio": 0.3
+    }
+  },
+  "processing_date": "2025-12-18T14:10:35.163553"
+}

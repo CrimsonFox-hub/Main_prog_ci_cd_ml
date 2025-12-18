@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import joblib
+import os
 
 def load_data(input_path: str) -> pd.DataFrame:
     """Загрузка данных из CSV файла"""
@@ -181,7 +182,7 @@ def main():
             train_path = Path(args.output_dir) / "train.csv"
             test_path = Path(args.output_dir) / "test.csv"
             processed_path = Path(args.output_dir) / "processed.csv"
-            
+
             train_df.to_csv(train_path, index=False)
             test_df.to_csv(test_path, index=False)
             processed_df.to_csv(processed_path, index=False)

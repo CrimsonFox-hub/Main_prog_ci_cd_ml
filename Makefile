@@ -66,62 +66,44 @@ init:
 	python -m venv venv
 	@echo "Виртуальное окружение создано"
 	@echo ""
-	@echo "=== Инструкция для Windows ==="
+	@echo "=== Инструкция ==="
 	@echo "1. Активируйте виртуальное окружение:"
+ifeq ($(SYSTEM),Windows)
 	@echo "   venv\Scripts\activate"
+else
+	@echo "   source venv/bin/activate"
+endif
 	@echo "2. Обновите pip:"
 	@echo "   python -m pip install --upgrade pip"
 	@echo "3. Установите зависимости:"
+	@echo "   pip install -r requirements.txt"
 	@echo "   pip install -r requirements-dev.txt"
 	@echo "4. Установите pre-commit:"
 	@echo "   pre-commit install"
 	@echo "5. Инициализируйте DVC:"
 	@echo "   dvc init"
 	@echo ""
-	@echo "=== Для Linux/macOS ==="
-	@echo "1. Активируйте виртуальное окружение:"
-	@echo "   source venv/bin/activate"
-	@echo "2. Дальнейшие шаги аналогичны"
 
 # Установка зависимостей
 install:
 	@echo "Установка зависимостей..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PIP) install -r requirements.txt
 	$(VENV_PIP) install -r requirements-dev.txt
-else
-	$(VENV_PIP) install -r requirements.txt
-	$(VENV_PIP) install -r requirements-dev.txt
-endif
 
 # Тестирование
 test:
 	@echo "Запуск тестов..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) -m pytest tests/unit/ -v --cov=src --cov-report=html --cov-report=term-missing
 	$(VENV_PYTHON) -m pytest tests/integration/ -v
 	$(VENV_PYTHON) -m pytest tests/e2e/ -v
-else
-	$(VENV_PYTHON) -m pytest tests/unit/ -v --cov=src --cov-report=html --cov-report=term-missing
-	$(VENV_PYTHON) -m pytest tests/integration/ -v
-	$(VENV_PYTHON) -m pytest tests/e2e/ -v
-endif
 
 test-unit:
 	@echo "Запуск модульных тестов..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) -m pytest tests/unit/ -v
-else
-	$(VENV_PYTHON) -m pytest tests/unit/ -v
-endif
 
 test-integration:
 	@echo "Запуск интеграционных тестов..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) -m pytest tests/integration/ -v
-else
-	$(VENV_PYTHON) -m pytest tests/integration/ -v
-endif
 
 test-load:
 	@echo "Запуск нагрузочного тестов..."
@@ -135,27 +117,15 @@ endif
 # Проверка кода
 lint:
 	@echo "Проверка кода..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) -m flake8 src/ tests/ --max-line-length=100 --exclude=__pycache__
 	$(VENV_PYTHON) -m mypy src/ --ignore-missing-imports
 	$(VENV_PYTHON) -m bandit -r src/ -x tests/
 	$(VENV_PYTHON) -m safety check -r requirements.txt
-else
-	flake8 src/ tests/ --max-line-length=100 --exclude=__pycache__
-	mypy src/ --ignore-missing-imports
-	bandit -r src/ -x tests/
-	safety check -r requirements.txt
-endif
 
 format:
 	@echo "Форматирование кода..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) -m black src/ tests/ --line-length=100
 	$(VENV_PYTHON) -m isort src/ tests/
-else
-	black src/ tests/ --line-length=100
-	isort src/ tests/
-endif
 
 # Очистка
 clean:
@@ -196,7 +166,11 @@ up:
 	@echo "Запуск сервисов..."
 	docker-compose up -d postgres redis minio mlflow
 	@echo "Ожидание инициализации сервисов..."
+ifeq ($(SYSTEM),Windows)
 	timeout /t 10 /nobreak > nul 2>&1 || sleep 10
+else
+	sleep 10
+endif
 	docker-compose up -d api
 	@echo "Сервисы запущены"
 	@echo "API: http://localhost:8000"
@@ -222,65 +196,32 @@ monitor:
 # Работа с моделями
 train:
 	@echo "Обучение модели..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) src/ml_pipeline/training/train_model.py --config configs/training_config.yaml
-else
-	$(VENV_PYTHON) src/ml_pipeline/training/train_model.py --config configs/training_config.yaml
-endif
 	@echo "Модель обучена. Результаты в MLflow: http://localhost:5000"
-
-train-simple:
-	@echo "Упрощенное обучение модели..."
-ifeq ($(SYSTEM),Windows)
-	$(VENV_PYTHON) src/ml_pipeline/training/train_model_simple.py --config configs/training_config.yaml
-else
-	$(VENV_PYTHON) src/ml_pipeline/training/train_model_simple.py --config configs/training_config.yaml
-endif
-	@echo "Упрощенное обучение завершено"
 
 retrain:
 	@echo "Переобучение модели..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) scripts/orchestration/trigger_retraining.py --trigger data_drift
-else
-	$(VENV_PYTHON) scripts/orchestration/trigger_retraining.py --trigger data_drift
-endif
 	@echo "Запущено переобучение. Проверьте Airflow: http://localhost:8080"
 
 benchmark:
 	@echo "Бенчмаркинг модели..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) src/ml_pipeline/training/onnx_conversion.py --benchmark
-else
-	$(VENV_PYTHON) src/ml_pipeline/training/onnx_conversion.py --benchmark
-endif
 	@echo "Бенчмаркинг завершен. Отчет в reports/benchmark_report.json"
 
 # Инфраструктура
 infra-init:
 	@echo "Инициализация Terraform..."
-ifeq ($(SYSTEM),Windows)
 	cd infrastructure/environments/staging && terraform init
-else
-	cd infrastructure/environments/staging && terraform init
-endif
 
 infra-apply:
 	@echo "Развертывание инфраструктуры staging..."
-ifeq ($(SYSTEM),Windows)
 	cd infrastructure/environments/staging && terraform apply -auto-approve
-else
-	cd infrastructure/environments/staging && terraform apply -auto-approve
-endif
 	@echo "Инфраструктура staging развернута"
 
 infra-destroy:
 	@echo "Удаление инфраструктуры staging..."
-ifeq ($(SYSTEM),Windows)
 	cd infrastructure/environments/staging && terraform destroy -auto-approve
-else
-	cd infrastructure/environments/staging && terraform destroy -auto-approve
-endif
 	@echo "Инфраструктура staging удалена"
 
 # Развертывание
@@ -294,20 +235,12 @@ deploy-staging:
 # Работа с данными
 data-download:
 	@echo "Загрузка данных..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) scripts/data/download_data.py --source-url https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data
-else
-	$(VENV_PYTHON) scripts/data/download_data.py --source-url https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data
-endif
 	@echo "Данные загружены в data/raw/"
 
 data-process:
 	@echo "Обработка данных..."
-ifeq ($(SYSTEM),Windows)
-	$(VENV_PYTHON) scripts/data/process_data.py --input data/raw/german.data --output data/processed/
-else
-	$(VENV_PYTHON) scripts/data/process_data.py --input data/raw/german.data --output data/processed/
-endif
+	$(VENV_PYTHON) scripts/data/process_data.py --input data/raw/german_credit.csv --output data/processed/ --config configs/processing_config.yaml
 	@echo "Данные обработаны и сохранены в data/processed/"
 
 dvc-push:
@@ -346,21 +279,13 @@ ci-test:
 # Мониторинг и алерты
 monitor-drift:
 	@echo "Мониторинг дрифта..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) src/ml_pipeline/monitoring/drift_detection.py --hours 24
-else
-	$(VENV_PYTHON) src/ml_pipeline/monitoring/drift_detection.py --hours 24
-endif
 	@echo "Мониторинг завершен. Отчет в monitoring/reports/"
 
 # Вспомогательные команды
 generate-docs:
 	@echo "Генерация документации..."
-ifeq ($(SYSTEM),Windows)
 	$(VENV_PYTHON) -m pdoc --html src --output-dir docs/api --force
-else
-	pdoc --html src --output-dir docs/api --force
-endif
 	@echo "Документация сгенерирована в docs/api/"
 
 run-notebooks:
@@ -392,15 +317,13 @@ full-pipeline:
 	@echo "Запуск полного пайплайна..."
 	make clean
 	make init
-	@echo "Пожалуйста, выполните следующие шаги вручную:"
-	@echo "1. Активируйте виртуальное окружение"
-	@echo "2. Установите зависимости: make install"
-	@echo "3. Загрузите данные: make data-download"
-	@echo "4. Обработайте данные: make data-process"
-	@echo "5. Обучите модель: make train"
-	@echo "6. Проведите бенчмаркинг: make benchmark"
-	@echo "7. Запустите тесты: make test"
-	@echo "8. Соберите образы: make build-all"
+	$(VENV_ACTIVATE) && make install
+	make data-download
+	make data-process
+	make train
+	make benchmark
+	make test
+	make build-all
 	@echo "Полный пайплайн завершен"
 
 # Статус сервисов
@@ -410,32 +333,10 @@ status:
 	@echo ""
 	@echo "Использование диска:"
 ifeq ($(SYSTEM),Windows)
-	powershell "Get-ChildItem -Path data,models,logs -Directory -ErrorAction SilentlyContinue | Select-Object Name, @{Name='Size(MB)';Expression={[math]::Round((Get-ChildItem $_.FullName -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 2)}}"
+	powershell "Get-ChildItem -Path data,models,logs -Directory -ErrorAction SilentlyContinue | Select-Object Name, @{Name='Size(MB)';Expression={[math]::Round((Get-ChildItem $$_.FullName -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 2)}}"
 else
 	du -sh data/ models/ logs/ 2>/dev/null || true
 endif
-
-# Windows-специфичные команды
-windows-setup:
-	@echo "Настройка Windows окружения..."
-	@echo "1. Установите Python 3.9+ с https://python.org"
-	@echo "2. Установите Git с https://git-scm.com"
-	@echo "3. Установите Docker Desktop с https://docker.com"
-	@echo "4. Добавьте Python и Git в PATH"
-	@echo "5. Перезапустите PowerShell"
-	@echo ""
-	@echo "После установки выполните:"
-	@echo "make init"
-	@echo "venv\Scripts\activate"
-	@echo "make install"
-
-# Отображение информации о системе
-system-info:
-	@echo "=== Информация о системе ==="
-	@echo "ОС: $(SYSTEM)"
-	@echo "Python: $(shell python --version 2>&1 || echo 'Не установлен')"
-	@echo "Docker: $(shell docker --version 2>&1 || echo 'Не установлен')"
-	@echo "Git: $(shell git --version 2>&1 || echo 'Не установлен')"
 
 # Создание структуры директорий
 create-structure:
@@ -472,31 +373,42 @@ else
 endif
 	@echo "Структура создана"
 
-# Быстрый старт для Windows
-windows-quick-start:
-	@echo "=== Быстрый старт для Windows ==="
+# Проверка конфигурации
+check-config:
+	@echo "Проверка конфигурации..."
+	$(VENV_PYTHON) -c "import yaml; config = yaml.safe_load(open('configs/training_config.yaml')); print('training_config keys:', list(config.keys()))"
 	@echo ""
-	@echo "1. Убедитесь, что установлены:"
-	@echo "   - Python 3.9+ (python.org)"
-	@echo "   - Git (git-scm.com)"
-	@echo "   - Docker Desktop (docker.com)"
-	@echo ""
-	@echo "2. Клонируйте репозиторий:"
-	@echo "   git clone <ваш-репозиторий>"
-	@echo "   cd Main_prog_ci_cd_ml"
-	@echo ""
-	@echo "3. Создайте виртуальное окружение:"
-	@echo "   python -m venv venv"
-	@echo ""
-	@echo "4. Активируйте окружение:"
-	@echo "   venv\Scripts\activate"
-	@echo ""
-	@echo "5. Установите зависимости:"
-	@echo "   pip install -r requirements.txt"
-	@echo "   pip install -r requirements-dev.txt"
-	@echo ""
-	@echo "6. Проверьте установку:"
-	@echo "   python --version"
-	@echo "   pip list"
-	@echo ""
-	@echo "Готово! Вы можете начать работу."
+	$(VENV_PYTHON) -c "import pandas as pd; df = pd.read_csv('data/processed/train.csv'); print('Колонки в train.csv:', df.columns.tolist())"
+
+# Создание конфигурационных файлов
+create-configs:
+	@echo "Создание недостающих конфигурационных файлов..."
+ifeq ($(SYSTEM),Windows)
+	if not exist "configs\processing_config.yaml" \
+	( \
+		$(VENV_PYTHON) -c "import yaml; config = {'data': {'numerical_features': ['duration', 'credit_amount', 'age', 'installment_commitment', 'residence_since', 'existing_credits', 'num_dependents'], 'categorical_features': ['checking_status', 'credit_history', 'purpose', 'savings_status', 'employment', 'personal_status', 'other_parties', 'property_magnitude', 'other_payment_plans', 'housing', 'job', 'own_telephone', 'foreign_worker'], 'target_column': 'default'}, 'model': {'paths': {'scaler': 'models/processed/scaler.pkl', 'encoder': 'models/processed/encoder.pkl'}}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/processing_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)" \
+	)
+	if not exist "configs\training_config.yaml" \
+	( \
+		$(VENV_PYTHON) -c "import yaml; config = {'model_paths': {'trained': 'models/trained/model.pkl', 'onnx': 'models/trained/model.onnx', 'tensorflow': 'models/trained/model'}, 'data': {'train_path': 'data/processed/train.csv', 'test_path': 'data/processed/test.csv', 'target_column': 'default'}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/training_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)" \
+	)
+else
+	if [ ! -f "configs/processing_config.yaml" ]; then \
+		$(VENV_PYTHON) -c "import yaml; config = {'data': {'numerical_features': ['duration', 'credit_amount', 'age', 'installment_commitment', 'residence_since', 'existing_credits', 'num_dependents'], 'categorical_features': ['checking_status', 'credit_history', 'purpose', 'savings_status', 'employment', 'personal_status', 'other_parties', 'property_magnitude', 'other_payment_plans', 'housing', 'job', 'own_telephone', 'foreign_worker'], 'target_column': 'default'}, 'model': {'paths': {'scaler': 'models/processed/scaler.pkl', 'encoder': 'models/processed/encoder.pkl'}}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/processing_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)"; \
+	fi
+	if [ ! -f "configs/training_config.yaml" ]; then \
+		$(VENV_PYTHON) -c "import yaml; config = {'model_paths': {'trained': 'models/trained/model.pkl', 'onnx': 'models/trained/model.onnx', 'tensorflow': 'models/trained/model'}, 'data': {'train_path': 'data/processed/train.csv', 'test_path': 'data/processed/test.csv', 'target_column': 'default'}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/training_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)"; \
+	fi
+endif
+	@echo "Конфигурационные файлы созданы"
+
+# Быстрая проверка работоспособности
+quick-test:
+	@echo "Быстрая проверка работоспособности..."
+	make data-download
+	make create-configs
+	make data-process
+	make check-config
+	@echo "Проверка завершена. Теперь можно запускать: make train"
+
+.PHONY: help init install test test-unit test-integration test-load lint format clean up down logs monitor train retrain benchmark infra-init infra-apply infra-destroy deploy-staging data-download data-process dvc-push build-api build-training build-all ci-test monitor-drift generate-docs run-notebooks backup-models restore-models full-pipeline status create-structure check-config create-configs quick-test
