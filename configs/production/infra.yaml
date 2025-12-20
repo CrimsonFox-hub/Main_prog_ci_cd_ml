@@ -1,0 +1,59 @@
+# Yandex Cloud настройки
+yandex:
+  cloud_id: "${YC_CLOUD_ID}"
+  folder_id: "${YC_FOLDER_ID}"
+  zone: "ru-central1-a"
+  
+  service_account:
+    name: "mlops-sa"
+    key_path: "/etc/secrets/sa-key.json"
+
+kubernetes:
+  cluster_name: "credit-scoring-cluster"
+  namespace: "ml-production"
+  
+  node_groups:
+    - name: "cpu-pool"
+      instance_type: "standard-v2"
+      cpu: 4
+      memory_gb: 8
+      min_size: 2
+      max_size: 5
+      
+    - name: "gpu-pool"
+      instance_type: "gpu-standard-v2"
+      gpu: 1
+      cpu: 8
+      memory_gb: 32
+      min_size: 0
+      max_size: 2
+
+storage:
+  s3:
+    endpoint: "https://storage.yandexcloud.net"
+    bucket: "credit-scoring-models"
+    region: "ru-central1"
+    
+  postgresql:
+    version: "15"
+    disk_size_gb: 20
+    user: "mlops"
+    database: "credit_scoring"
+    
+  redis:
+    version: "7"
+    memory_gb: 4
+    persistence: true
+
+monitoring_stack:
+  prometheus:
+    storage_size_gb: 50
+    retention_days: 30
+    
+  grafana:
+    enabled: true
+    admin_password: "${GRAFANA_PASSWORD}"
+    
+  loki:
+    enabled: true
+    storage_size_gb: 20

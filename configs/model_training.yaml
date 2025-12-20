@@ -1,0 +1,69 @@
+# Конфигурация тренировки модели
+data:
+  source: "s3://credit-scoring-data/raw/german_credit.csv"
+  target_column: "default"
+  test_size: 0.2
+  validation_size: 0.1
+  
+  preprocessing:
+    numerical:
+      strategy: "standard"
+      missing: "median"
+    categorical:
+      strategy: "onehot"
+      missing: "mode"
+
+model:
+  type: "random_forest"  # или "nn" для нейронной сети
+  version: "2.0.0"
+  
+  random_forest:
+    n_estimators: 100
+    max_depth: 10
+    min_samples_split: 5
+    
+  neural_network:
+    hidden_layers: [64, 32, 16]
+    dropout: 0.3
+    activation: "relu"
+    output_activation: "sigmoid"
+
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  early_stopping_patience: 10
+  random_seed: 42
+  
+  hyperparameter_tuning:
+    enabled: true
+    method: "random"
+    n_iter: 20
+    cv_folds: 5
+
+evaluation:
+  metrics: ["accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"]
+  threshold: 0.5
+  
+  cross_validation:
+    enabled: true
+    folds: 5
+
+export:
+  formats: ["pkl", "onnx", "joblib"]
+  quantization: true
+  optimize: true
+  
+  mlflow:
+    enabled: true
+    registry_model_name: "credit-scoring-model"
+    stage: "Production"
+
+monitoring:
+  data_drift:
+    enabled: true
+    reference_dataset: "train"
+    
+  model_drift:
+    enabled: true
+    window_size: 1000

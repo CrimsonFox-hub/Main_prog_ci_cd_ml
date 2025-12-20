@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: credit-scoring-api
+  namespace: credit-scoring
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: api
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: RELOAD
+          value: "false"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          initialDelaySeconds: 60
+          periodSeconds: 30

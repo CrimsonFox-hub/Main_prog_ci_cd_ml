@@ -1,0 +1,56 @@
+# .dockerignore
+# Игнорируемые файлы и папки
+
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+.env.local
+.env.*.local
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Data и модели (будут загружены через DVC)
+data/raw/
+data/processed/
+models/*.pkl
+models/*.onnx
+models/trained/
+
+# Логи
+logs/
+*.log
+
+# DVC
+.dvc/tmp/
+.dvc/cache/
+
+# MLflow
+mlflow/
+
+# Документация
+docs/_build/

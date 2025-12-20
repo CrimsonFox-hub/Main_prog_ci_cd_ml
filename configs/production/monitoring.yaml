@@ -1,0 +1,63 @@
+drift:
+  reference_path: "s3://credit-scoring-data/reference/train.csv"
+  window_size: 1000
+  check_interval_hours: 24
+  
+  thresholds:
+    data_drift_psi: 0.25
+    concept_drift_accuracy_drop: 0.1
+    prediction_drift_ks: 0.1
+    
+  alerts:
+    enabled: true
+    slack_webhook: "${SLACK_WEBHOOK}"
+    email: ["ml-team@your-bank.com"]
+
+metrics:
+  collection_interval: 15s
+  
+  model_metrics:
+    - name: "predictions_total"
+      type: "counter"
+      labels: ["model_version", "status"]
+      
+    - name: "prediction_latency_seconds"
+      type: "histogram"
+      buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
+      
+    - name: "feature_distribution_drift"
+      type: "gauge"
+      labels: ["feature_name"]
+
+logging:
+  level: "INFO"
+  format: "json"
+  
+  loki:
+    url: "http://loki.monitoring.svc.cluster.local:3100"
+    tenant_id: "credit-scoring"
+    
+  sentry:
+    enabled: true
+    dsn: "${SENTRY_DSN}"
+    environment: "production"
+
+alerting:
+  rules:
+    - alert: "HighDataDrift"
+      expr: "feature_distribution_drift > 0.3"
+      for: "1h"
+      labels:
+        severity: "warning"
+      annotations:
+        summary: "Высокий дрифт данных в признаках"
+        description: "Дрифт превышает 30% для одного или более признаков"
+        
+    - alert: "ModelLatencyHigh"
+      expr: "histogram_quantile(0.95, rate(prediction_latency_seconds_bucket[5m])) > 0.1"
+      for: "5m"
+      labels:
+        severity: "critical"
+      annotations:
+        summary: "Высокая задержка предсказаний модели"
+        description: "95-й перцентиль задержки превышает 100мс"

@@ -1,0 +1,78 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: credit-scoring
+
+resources:
+  - ../../base/namespace/
+  - ../../base/configs/
+  - ../../services/api/
+  - ../../services/mlflow/
+  - ../../services/monitoring-stack/
+  - ../../services/ml-pipelines/
+
+# Production конфигурации
+configMapGenerator:
+  - name: credit-scoring-env
+    literals:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+      - API_HOST=api.credit-scoring.your-bank.com
+      - MODEL_REFRESH_INTERVAL=900
+      - ENABLE_RATE_LIMITING=true
+      - RATE_LIMIT_REQUESTS=100
+      - RATE_LIMIT_WINDOW=60
+    behavior: merge
+  
+  - name: mlflow-config
+    literals:
+      - tracking_uri=http://mlflow-server.mlflow.svc.cluster.local:5000
+      - artifact_store=s3://mlflow-artifacts-production
+      - registry_model_name=credit-scoring-model
+    behavior: merge
+
+# Production образы
+images:
+  - name: registry.yandexcloud.net/credit-scoring/credit-scoring-api
+    newName: registry.yandexcloud.net/credit-scoring/credit-scoring-api
+    newTag: ${GITHUB_SHA}-prod
+  
+  - name: ghcr.io/mlflow/mlflow
+    newName: ghcr.io/mlflow/mlflow
+    newTag: v2.8.1
+
+# Патчи для production
+patchesStrategicMerge:
+  - patches/api-deployment.yaml
+  - patches/ingress.yaml
+  - patches/resources.yaml
+  - patches/security.yaml
+
+# Istio для canary deployments (опционально)
+transformers:
+  - transformers/istio-virtualservice.yaml
+
+vars:
+  - name: API_DOMAIN
+    objref:
+      kind: ConfigMap
+      name: credit-scoring-env
+      apiVersion: v1
+    fieldref:
+      fieldpath: data.API_HOST
+  
+  - name: STORAGE_CLASS
+    objref:
+      kind: StorageClass
+      name: yc-network-ssd
+      apiVersion: storage.k8s.io/v1
+    fieldref:
+      fieldpath: metadata.name
+  
+  - name: CERT_ISSUER
+    objref:
+      kind: ClusterIssuer
+      name: letsencrypt-production
+      apiVersion: cert-manager.io/v1
+    fieldref:
+      fieldpath: metadata.name

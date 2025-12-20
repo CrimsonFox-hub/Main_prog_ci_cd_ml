@@ -1,17 +1,20 @@
 # Staging environment for MLOps Credit Scoring
 
 # Local variables
+# Local variables
 locals {
   project_name    = "credit-scoring"
-  environment     = "staging"
+  environment     = "production"
   region          = "ru-central1"
-  zone            = "ru-central1-a"
+  zones           = ["ru-central1-a", "ru-central1-b", "ru-central1-c"]  # Multi-zone для отказоустойчивости
   
   common_tags = {
     Project     = local.project_name
     Environment = local.environment
     ManagedBy   = "Terraform"
     Repository  = "github.com/CrimsonFox-hub/Main_prog_ci_cd_ml.git"
+    Tier        = "production"
+    Critical    = "true"
   }
 }
 
@@ -20,26 +23,45 @@ module "network" {
   source = "../../modules/network"
   
   vpc_name = "${local.project_name}-${local.environment}"
-  description = "VPC for Credit Scoring ML project (${local.environment})"
+  description = "Production VPC for Credit Scoring ML project"
   labels = local.common_tags
   
   subnets = [
     {
       name           = "${local.project_name}-${local.environment}-subnet-a"
-      zone           = local.zone
-      v4_cidr_blocks = ["10.10.0.0/24"]
-      route_table_id = null
+      zone           = local.zones[0]
+      v4_cidr_blocks = ["10.100.0.0/24"]
       labels = merge(local.common_tags, {
+        zone = "a"
+        tier = "private"
+      })
+    },
+    {
+      name           = "${local.project_name}-${local.environment}-subnet-b"
+      zone           = local.zones[1]
+      v4_cidr_blocks = ["10.100.1.0/24"]
+      labels = merge(local.common_tags, {
+        zone = "b"
+        tier = "private"
+      })
+    },
+    {
+      name           = "${local.project_name}-${local.environment}-subnet-c"
+      zone           = local.zones[2]
+      v4_cidr_blocks = ["10.100.2.0/24"]
+      labels = merge(local.common_tags, {
+        zone = "c"
         tier = "private"
       })
     }
   ]
   
-  # Security groups configuration
-  allowed_k8s_api_cidr_blocks = ["0.0.0.0/0"]  # В production ограничить
-  allowed_ssh_cidr_blocks     = ["0.0.0.0/0"]  # В production ограничить
-  allowed_database_cidr_blocks = ["10.10.0.0/24", "10.20.0.0/16"]
-  
+  # Более строгие security groups для production
+  allowed_k8s_api_cidr_blocks = ["10.100.0.0/16", "${var.office_ip}/32"]  # Только внутренние IP и офис
+  allowed_ssh_cidr_blocks     = ["${var.bastion_ip}/32", "${var.office_ip}/32"]
+  allowed_http_cidr_blocks    = ["0.0.0.0/0"]  # Для ingress
+  allowed_database_cidr_blocks = ["10.100.0.0/16", "10.20.0.0/16", "10.21.0.0/16"]
+
   additional_ingress_rules = [
     {
       protocol       = "TCP"

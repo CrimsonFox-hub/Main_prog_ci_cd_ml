@@ -1,0 +1,55 @@
+# Базовый ConfigMap с настройками по умолчанию
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: credit-scoring-defaults
+  namespace: credit-scoring
+data:
+  api.config.yaml: |
+    server:
+      host: 0.0.0.0
+      port: 8000
+      workers: 4
+      timeout: 30
+    
+    model:
+      type: onnx
+      cache_enabled: true
+      cache_size: 1000
+    
+    logging:
+      level: INFO
+      format: json
+    
+    monitoring:
+      prometheus_port: 8000
+      enabled: true
+  
+  mlflow.config.yaml: |
+    tracking:
+      uri: http://mlflow-server.mlflow.svc.cluster.local:5000
+      experiment_name: credit-scoring
+    
+    artifact:
+      store: s3://mlflow-artifacts
+      destination: ./mlartifacts
+    
+    ui:
+      enabled: true
+      port: 5000
+  
+  monitoring.config.yaml: |
+    prometheus:
+      retention: 30d
+      storage_size: 50Gi
+      
+    grafana:
+      admin_user: admin
+      plugins:
+        - grafana-piechart-panel
+        - grafana-clock-panel
+    
+    alerts:
+      data_drift_threshold: 0.3
+      concept_drift_threshold: 0.2
+      latency_threshold_ms: 500

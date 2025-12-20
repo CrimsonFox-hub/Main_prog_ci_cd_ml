@@ -1,0 +1,45 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: true
+
+logging:
+  level: "DEBUG"
+  format: "json"
+
+model:
+  type: "onnx"
+  path: "models/credit_scoring.onnx"
+  fallback_path: "models/credit_scoring.pkl"
+  cache_enabled: false
+
+features:
+  categorical: 
+    - "credit_history"
+    - "purpose"
+    - "savings"
+    - "employment"
+    - "property"
+  numerical:
+    - "duration"
+    - "credit_amount"
+    - "installment_rate"
+    - "age"
+    - "existing_credits"
+
+database:
+  url: "postgresql://postgres:postgres@localhost:5432/credit_scoring"
+  pool_size: 5
+
+redis:
+  url: "redis://localhost:6379/0"
+  cache_ttl: 300
+
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "credit-scoring-local"
+
+monitoring:
+  prometheus_port: 8001
+  enabled: true

@@ -62,10 +62,58 @@ Main_prog_ci_cd_ml/
     - MLflow UI: `http://localhost:5000`
 
 ## Развертывание в облаке
-Инструкции по развертыванию в Yandex Cloud с использованием Terraform и Kubernetes находятся в директории `infrastructure/README.md`.
+
+# 1. Установите базовые системные утилиты и Docker с Docker Compose
+```bash
+sudo apt-get update && sudo apt-get upgrade -y
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common git
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+```
+
+# 2. Добавьте вашего пользователя в группу docker, чтобы не использовать sudo
+```bash
+sudo usermod -aG docker $USER
+
+```
+# Важно! Для применения изменения нужно выйти и зайти заново в SSH-сессию.
+# Сделайте это после завершения всех команд этой части.
+
+# 3. Клонируйте ваш проект с GitHub на ВМ
+```bash
+git clone https://github.com/CrimsonFox-hub/Main_prog_ci_cd_ml.git
+cd Main_prog_ci_cd_ml
+
+# 4. Настройте файл окружения (env). Создайте его на основе примера.
+cp .env.example .env
+# ОТКРОЙТЕ файл .env в редакторе (nano .env) и заполните реальными данными,
+# например, паролями для БД. Для учебного проекта можно оставить упрощенные значения.
+```
+# установка docker-compose
+```bash
+apt install docker-compose
+```
+# 5. Запустите все сервисы
+```bash
+docker-compose up -d
+```
+# 6. Проверьте, что все контейнеры работают
+```bash
+docker-compose ps
+```
+# 7. Посмотрите логи (особенно если что-то не запустилось)
+```bash
+docker-compose logs api  # Или имя другого сервиса
+```
+
 
 ## Мониторинг
 После развертывания в облаке настроены дашборды Grafana для мониторинга:
 - Метрики инфраструктуры (CPU, память, сеть)
 - Метрики производительности модели (латентность, ошибки)
 - Детекция дрифта данных и концепта (Evidently AI)
+
+
+

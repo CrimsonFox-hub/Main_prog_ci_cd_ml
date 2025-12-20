@@ -1,7 +1,9 @@
 [core]
-    remote = minio
+    remote = yc
 ['remote "minio"']
     url = s3://dvc-bucket
     endpointurl = http://localhost:9000
     access_key_id = minioadmin
     secret_access_key = minioadmin
+['remote "yc"']
+    url = s3://credit-scoring-models

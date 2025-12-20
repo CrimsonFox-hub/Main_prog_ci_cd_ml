@@ -6,33 +6,55 @@ on:
     paths-ignore:
       - '**/*.md'
       - '**/*.txt'
+      - '**/*.gitignore'
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
   schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM
-  workflow_dispatch:  # Manual trigger
+    - cron: '0 2 * * *'  # Daily at 2 AM for drift detection
+  workflow_dispatch:  # Manual trigger with inputs
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: cr.yandex.cloud
   IMAGE_NAME: ${{ secrets.YC_REGISTRY_ID }}/credit-scoring
   K8S_NAMESPACE: ml-production
-  TF_VERSION: 1.5.0
+  TF_VERSION: 1.6.0
+  PYTHON_VERSION: '3.10'
 
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
     
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
-        path: ~/.cache/pip
+        path: |
+          ~/.cache/pip
+          ~/.cache/mypy
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
@@ -42,62 +64,153 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
         pip install -r requirements.txt
+        pip install -r requirements-ml.txt
     
     - name: Lint code
       run: |
         black --check src/ tests/
-        flake8 src/ tests/ --max-line-length=100
-        mypy src/ --ignore-missing-imports
+        flake8 src/ tests/ --max-line-length=100 --statistics
+        mypy src/ --ignore-missing-imports --show-error-codes
     
-    - name: Run tests
+    - name: Unit tests
       run: |
-        pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=html
-        pytest tests/integration/ -v
+        pytest tests/unit/ -v \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=html \
+          --junitxml=test-results/junit.xml
     
-    - name: Upload coverage
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+    - name: Integration tests
+      run: |
+        pytest tests/integration/ -v \
+          --junitxml=test-results/integration-junit.xml
     
     - name: Security scan
       run: |
-        pip install bandit safety
+        pip install bandit safety semgrep
         bandit -r src/ -f json -o bandit-report.json
         safety check -r requirements.txt
+        semgrep scan --config auto . --json -o semgrep-report.json
     
-  build-and-push:
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          test-results/
+          coverage.xml
+          htmlcov/
+          bandit-report.json
+          semgrep-report.json
+
+  build-and-test-model:
     needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install ML dependencies
+      run: |
+        pip install -r requirements-ml.txt
+        pip install onnx onnxruntime torch torchvision torchaudio
+        pip install memory_profiler psutil
+    
+    - name: Run model pipeline
+      run: |
+        python src/ml_pipeline/train.py \
+          --data-path data/processed/train.csv \
+          --model-path models/ \
+          --onnx \
+          --benchmark
+    
+    - name: Convert to ONNX
+      run: |
+        python src/ml_pipeline/convert_to_onnx.py \
+          --input-model models/credit_scoring_model.pkl \
+          --output-model models/credit_scoring_model.onnx
+    
+    - name: Optimize model (Quantization)
+      run: |
+        python src/ml_pipeline/optimize_model.py \
+          --model models/credit_scoring_model.onnx \
+          --output models/credit_scoring_model_quantized.onnx \
+          --quantize
+    
+    - name: Benchmark models
+      run: |
+        python src/ml_pipeline/benchmark.py \
+          --model-pkl models/credit_scoring_model.pkl \
+          --model-onnx models/credit_scoring_model.onnx \
+          --model-quantized models/credit_scoring_model_quantized.onnx \
+          --data data/processed/test.csv \
+          --output reports/benchmark_report.json
+    
+    - name: Upload model artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: model-artifacts
+        path: |
+          models/
+          reports/benchmark_report.json
+
+  build-and-push-images:
+    needs: [lint-and-test, build-and-test-model]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    
+    - name: Download model artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: model-artifacts
+        path: models/
     
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
     
     - name: Login to Yandex Container Registry
-      run: |
-        echo ${{ secrets.YC_SA_KEY }} | docker login \
-          --username json_key \
-          --password-stdin \
-          ${{ env.REGISTRY }}
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: json_key
+        password: ${{ secrets.YC_SA_KEY }}
+    
+    - name: Extract metadata
+      uses: docker/metadata-action@v5
+      id: meta
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api
+        tags: |
+          type=sha
+          type=ref,event=branch
+          type=ref,event=tag
+          type=raw,value=latest,enable={{is_default_branch}}
     
     - name: Build and push API image
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v5
       with:
         context: .
         file: ./docker/api/Dockerfile
         push: true
-        tags: |
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:latest
-          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+        provenance: false
     
     - name: Build and push Training image
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v5
       with:
         context: .
         file: ./docker/training/Dockerfile
@@ -109,160 +222,218 @@ jobs:
         cache-to: type=gha,mode=max
     
     - name: Build and push Monitoring image
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v5
       with:
         context: .
         file: ./docker/monitoring/Dockerfile
         push: true
         tags: |
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-monitoring:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-monitoring:${{ github.sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-  
-  terraform-plan:
-    needs: build-and-push
+
+  terraform-validate:
+    needs: build-and-push-images
     runs-on: ubuntu-latest
     environment: staging
-    if: github.ref == 'refs/heads/main'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+        terraform_wrapper: false
+    
+    - name: Terraform fmt
+      run: terraform fmt -check -recursive
+      working-directory: ./infrastructure
+    
+    - name: Terraform validate
+      run: terraform validate
+      working-directory: ./infrastructure/environments/staging
+    
+    - name: Terraform plan for staging
+      run: |
+        terraform init -backend-config="access_key=${{ secrets.YC_ACCESS_KEY }}" \
+                      -backend-config="secret_key=${{ secrets.YC_SECRET_KEY }}"
+        terraform plan -var="environment=staging" \
+                      -var="image_tag=${{ github.sha }}" \
+                      -out=tfplan-staging
+      working-directory: ./infrastructure/environments/staging
+    
+    - name: Terraform plan for production
+      run: |
+        terraform init -backend-config="access_key=${{ secrets.YC_ACCESS_KEY }}" \
+                      -backend-config="secret_key=${{ secrets.YC_SECRET_KEY }}"
+        terraform plan -var="environment=production" \
+                      -var="image_tag=${{ github.sha }}" \
+                      -out=tfplan-production
+      working-directory: ./infrastructure/environments/production
+
+  deploy-staging:
+    needs: terraform-validate
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: ${{ env.TF_VERSION }}
     
-    - name: Configure Yandex Cloud credentials
-      env:
-        YC_TOKEN: ${{ secrets.YC_TOKEN }}
-        YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
-        YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+    - name: Apply Terraform for staging
       run: |
-        echo "token = \"$YC_TOKEN\"" > terraform.tfvars
-        echo "cloud_id = \"$YC_CLOUD_ID\"" >> terraform.tfvars
-        echo "folder_id = \"$YC_FOLDER_ID\"" >> terraform.tfvars
-    
-    - name: Terraform Init
-      run: terraform init -backend-config="access_key=${{ secrets.YC_ACCESS_KEY }}" -backend-config="secret_key=${{ secrets.YC_SECRET_KEY }}"
+        terraform init
+        terraform apply -auto-approve tfplan-staging
       working-directory: ./infrastructure/environments/staging
-    
-    - name: Terraform Plan
-      run: terraform plan -var-file="terraform.tfvars"
-      working-directory: ./infrastructure/environments/staging
-  
-  deploy-staging:
-    needs: terraform-plan
-    runs-on: ubuntu-latest
-    environment: staging
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v3
     
     - name: Configure kubectl
       run: |
         mkdir -p $HOME/.kube
-        echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 --decode > $HOME/.kube/config
-        kubectl cluster-info
+        yc managed-kubernetes cluster get-credentials ${{ secrets.YC_K8S_CLUSTER_STAGING }} \
+          --external --folder-id ${{ secrets.YC_FOLDER_ID }}
     
     - name: Deploy to Kubernetes
       run: |
+        # Create namespace if not exists
+        kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+        
         # Apply base configurations
-        kubectl apply -f kubernetes/base/namespace.yaml
-        kubectl apply -f kubernetes/base/configs.yaml
+        kubectl apply -f kubernetes/base/ -n ${{ env.K8S_NAMESPACE }}
         
         # Apply secrets
         kubectl create secret generic db-credentials \
           --from-literal=url=${{ secrets.DATABASE_URL }} \
-          --dry-run=client -o yaml | kubectl apply -f -
+          --dry-run=client -o yaml | kubectl apply -n ${{ env.K8S_NAMESPACE }} -f -
         
-        kubectl create secret generic redis-credentials \
-          --from-literal=url=${{ secrets.REDIS_URL }} \
-          --dry-run=client -o yaml | kubectl apply -f -
+        kubectl create secret generic mlflow-credentials \
+          --from-literal=tracking_uri=${{ secrets.MLFLOW_TRACKING_URI }} \
+          --dry-run=client -o yaml | kubectl apply -n ${{ env.K8S_NAMESPACE }} -f -
         
-        # Deploy application
-        kubectl apply -f kubernetes/credit-scoring-api/
+        # Deploy application with new image
+        export IMAGE_TAG=${{ github.sha }}
+        envsubst < kubernetes/credit-scoring-api/deployment.yaml | kubectl apply -n ${{ env.K8S_NAMESPACE }} -f -
         
-        # Update deployment with new image
-        kubectl set image deployment/credit-scoring-api \
-          api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }} \
-          -n ${{ env.K8S_NAMESPACE }}
+        # Apply services and ingress
+        kubectl apply -f kubernetes/credit-scoring-api/service.yaml -n ${{ env.K8S_NAMESPACE }}
+        kubectl apply -f kubernetes/credit-scoring-api/ingress.yaml -n ${{ env.K8S_NAMESPACE }}
         
         # Wait for rollout
-        kubectl rollout status deployment/credit-scoring-api -n ${{ env.K8S_NAMESPACE }}
+        kubectl rollout status deployment/credit-scoring-api -n ${{ env.K8S_NAMESPACE }} --timeout=300s
     
-    - name: Run integration tests
+    - name: Run smoke tests
       run: |
+        # Wait for service to be ready
         kubectl wait --for=condition=ready pod -l app=credit-scoring-api -n ${{ env.K8S_NAMESPACE }} --timeout=300s
-        ./scripts/run_integration_tests.sh
+        
+        # Get service URL
+        SERVICE_URL=$(kubectl get svc credit-scoring-api -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        
+        # Test endpoints
+        curl -f http://${SERVICE_URL}:8000/health
+        curl -f http://${SERVICE_URL}:8000/docs
+        curl -f http://${SERVICE_URL}:8000/api/v1/predict \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d '{"features": [0.1, 0.2, 0.3, 0.4, 0.5]}'
     
-    - name: Send notification
-      if: success()
-      uses: rtCamp/action-slack-notify@v2
-      env:
-        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-        SLACK_TITLE: "✅ Staging deployment successful"
-        SLACK_MESSAGE: "Version ${{ github.sha }} deployed to staging"
-  
+    - name: Load testing
+      run: |
+        pip install locust
+        locust -f tests/load_test.py --headless -u 100 -r 10 -t 60s --host http://${SERVICE_URL}:8000
+
   deploy-production:
     needs: deploy-staging
     runs-on: ubuntu-latest
     environment: production
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
-    - name: Configure kubectl
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+    
+    - name: Apply Terraform for production
+      run: |
+        terraform init
+        terraform apply -auto-approve tfplan-production
+      working-directory: ./infrastructure/environments/production
+    
+    - name: Configure kubectl for production
       run: |
         mkdir -p $HOME/.kube
-        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 --decode > $HOME/.kube/config
+        yc managed-kubernetes cluster get-credentials ${{ secrets.YC_K8S_CLUSTER_PRODUCTION }} \
+          --external --folder-id ${{ secrets.YC_FOLDER_ID }}
     
-    - name: Canary deployment
+    - name: Blue-green deployment
       run: |
-        # Deploy canary version (10% traffic)
-        kubectl apply -f kubernetes/canary/canary.yaml
+        # Deploy green version
+        export IMAGE_TAG=${{ github.sha }}
+        export DEPLOYMENT_NAME="credit-scoring-api-green"
         
-        # Monitor canary metrics
-        sleep 60  # Wait for metrics
+        # Create green deployment
+        envsubst < kubernetes/credit-scoring-api/deployment-green.yaml | kubectl apply -n ${{ env.K8S_NAMESPACE }} -f -
         
-        # If metrics are good, increase to 50%
-        kubectl patch virtualservice credit-scoring-api \
-          -n ${{ env.K8S_NAMESPACE }} \
-          -p '{"spec":{"http":[{"route":[{"destination":{"host":"credit-scoring-api","subset":"stable"},"weight":50},{"destination":{"host":"credit-scoring-api","subset":"canary"},"weight":50}]}]}}'
+        # Wait for green to be ready
+        kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${{ env.K8S_NAMESPACE }} --timeout=300s
         
-        sleep 120
+        # Switch traffic to green
+        kubectl apply -f kubernetes/credit-scoring-api/service-green.yaml -n ${{ env.K8S_NAMESPACE }}
         
-        # Full rollout
-        kubectl patch virtualservice credit-scoring-api \
-          -n ${{ env.K8S_NAMESPACE }} \
-          -p '{"spec":{"http":[{"route":[{"destination":{"host":"credit-scoring-api","subset":"canary"},"weight":100}]}]}}'
+        # Test green deployment
+        SERVICE_URL=$(kubectl get svc credit-scoring-api-green -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        curl -f http://${SERVICE_URL}:8000/health
+        
+        # Clean up blue deployment
+        kubectl delete deployment credit-scoring-api-blue -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
     
-    - name: Run production tests
+    - name: Canary deployment (optional)
+      if: false  # Disabled by default, enable when needed
       run: |
-        ./scripts/run_production_tests.sh
-    
-    - name: Cleanup old deployments
-      run: |
-        kubectl delete deployment credit-scoring-api-previous -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
-  
-  monitor-drift:
+        # Apply canary configuration
+        kubectl apply -f kubernetes/canary/canary.yaml -n ${{ env.K8S_NAMESPACE }}
+        
+        # Gradually shift traffic
+        ./scripts/canary_rollout.sh \
+          --new-version ${{ github.sha }} \
+          --steps "10,25,50,100" \
+          --step-delay 60
+
+  monitor-and-drift:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install monitoring dependencies
+      run: |
+        pip install -r requirements-ml.txt
+        pip install evidently prometheus-client
     
     - name: Run drift detection
       run: |
         python src/ml_pipeline/monitoring/drift_detection.py \
-          --config configs/monitoring_config.yaml \
-          --hours 24 \
-          --output reports/drift_report_$(date +%Y%m%d).json
+          --reference-data data/processed/train.csv \
+          --current-data data/processed/latest_production_data.csv \
+          --output reports/drift_report_$(date +%Y%m%d_%H%M%S).json
     
     - name: Upload drift report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: drift-report
         path: reports/drift_report_*.json
@@ -270,5 +441,59 @@ jobs:
     - name: Trigger retraining if needed
       run: |
         python scripts/trigger_retraining.py \
-          --report reports/drift_report_*.json \
+          --drift-report reports/drift_report_*.json \
           --threshold 0.3
+
+  retrain-model:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-ml.txt
+        pip install dvc dvc-s3
+    
+    - name: Pull latest data with DVC
+      run: |
+        dvc pull data/processed/train.csv.dvc
+    
+    - name: Retrain model
+      run: |
+        python src/ml_pipeline/retrain.py \
+          --data data/processed/train.csv \
+          --output models/retrained_$(date +%Y%m%d).pkl \
+          --test-split 0.2
+    
+    - name: Evaluate retrained model
+      run: |
+        python src/ml_pipeline/evaluate.py \
+          --model models/retrained_$(date +%Y%m%d).pkl \
+          --data data/processed/test.csv \
+          --output reports/evaluation_$(date +%Y%m%d).json
+    
+    - name: Push model to registry
+      run: |
+        # Compare with current model
+        python scripts/compare_models.py \
+          --old models/credit_scoring_model.pkl \
+          --new models/retrained_$(date +%Y%m%d).pkl
+        
+        # If better, update production model
+        cp models/retrained_$(date +%Y%m%d).pkl models/credit_scoring_model.pkl
+
+        - name: Run benchmarks
+        run: python scripts/benchmarks/run_benchmarks.sh
+      
+    - name: Check drift
+      run: python scripts/monitoring/check_drift.py --run-tests
+    
+    - name: Deploy with blue-green
+      run: ./scripts/deployment/deploy_blue_green.sh --image-tag ${{ github.sha }}

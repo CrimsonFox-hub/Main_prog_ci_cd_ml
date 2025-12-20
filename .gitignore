@@ -21,3 +21,51 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+terraform.tfvars
+
+# Docker
+.env
+docker-compose.override.yml
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Data
+data/raw/
+data/processed/
+models/*.pkl
+models/*.onnx
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MLflow
+mlflow/
+
+*.auto.tfvars
+terraform.tfvars
+*.tfstate*
+
+# Скрипты и временные файлы
+reports/
+logs/
+*.log
+*.tmp
+*.bak
+
+# Данные
+data/raw/
+data/processed/
+models/trained/*.pkl
+models/trained/*.onnx

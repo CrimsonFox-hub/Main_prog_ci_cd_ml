@@ -1,0 +1,70 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: credit-scoring
+
+# Базовые ресурсы
+resources:
+  - ../../base/namespace/
+  - ../../base/configs/
+  - ../../services/api/
+  - ../../services/mlflow/
+  - ../../services/monitoring-stack/
+
+# Конфигурации
+configMapGenerator:
+  - name: credit-scoring-env
+    literals:
+      - ENVIRONMENT=staging
+      - LOG_LEVEL=DEBUG
+      - API_HOST=staging-api.158.160.209.225.nip.io
+      - MODEL_REFRESH_INTERVAL=300
+    behavior: merge
+  
+  - name: mlflow-config
+    literals:
+      - tracking_uri=http://mlflow-server.mlflow.svc.cluster.local:5000
+      - artifact_store=s3://mlflow-artifacts-staging
+    behavior: merge
+
+# Изменение образов
+images:
+  - name: registry.yandexcloud.net/credit-scoring/credit-scoring-api
+    newName: registry.yandexcloud.net/credit-scoring/credit-scoring-api
+    newTag: ${GITHUB_SHA}
+  
+  - name: ghcr.io/mlflow/mlflow
+    newName: ghcr.io/mlflow/mlflow
+    newTag: v2.8.1
+
+# Патчи для staging
+patchesStrategicMerge:
+  - patches/api-deployment.yaml
+  - patches/ingress.yaml
+  - patches/resources.yaml
+
+# Переменные для замены
+vars:
+  - name: API_DOMAIN
+    objref:
+      kind: ConfigMap
+      name: credit-scoring-env
+      apiVersion: v1
+    fieldref:
+      fieldpath: data.API_HOST
+  
+  - name: STORAGE_CLASS
+    objref:
+      kind: StorageClass
+      name: yc-network-hdd
+      apiVersion: storage.k8s.io/v1
+    fieldref:
+      fieldpath: metadata.name
+  
+  - name: CERT_ISSUER
+    objref:
+      kind: ClusterIssuer
+      name: letsencrypt-staging
+      apiVersion: cert-manager.io/v1
+    fieldref:
+      fieldpath: metadata.name
