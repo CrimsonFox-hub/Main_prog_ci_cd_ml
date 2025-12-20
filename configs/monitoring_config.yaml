@@ -1,312 +1,49 @@
-# Конфигурация мониторинга и алертинга
-prometheus:
-  enabled: true
-  scrape_interval: "15s"
-  evaluation_interval: "15s"
+# configs/monitoring_config.yaml - для локального использования
+data:
+  reference_path: "data/processed/train.csv"
+  target_column: "default"
   
-  scrape_configs:
-    - job_name: "credit-scoring-api"
-      scrape_interval: "15s"
-      static_configs:
-        - targets: ["credit-scoring-api.ml-production.svc.cluster.local:9090"]
-          labels:
-            service: "credit-scoring"
-            environment: "production"
-            
-    - job_name: "kubernetes-pods"
-      kubernetes_sd_configs:
-        - role: pod
-      relabel_configs:
-        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-          action: keep
-          regex: true
-          
-    - job_name: "kubernetes-nodes"
-      kubernetes_sd_configs:
-        - role: node
-      relabel_configs:
-        - action: labelmap
-          regex: __meta_kubernetes_node_label_(.+)
-
-grafana:
-  enabled: true
-  admin_user: "admin"
-  admin_password_secret: "grafana-admin-password"
+  numerical_features:
+    - duration
+    - credit_amount
+    - age
+    - installment_commitment
+    - residence_since
+    - existing_credits
+    - num_dependents
   
-  dashboards:
-    - name: "mlops-overview"
-      file: "dashboards/mlops-overview.json"
-      folder: "MLOps"
-      
-    - name: "model-performance"
-      file: "dashboards/model-performance.json"
-      folder: "MLOps"
-      
-    - name: "data-drift"
-      file: "dashboards/data-drift.json"
-      folder: "MLOps"
-      
-    - name: "infrastructure"
-      file: "dashboards/infrastructure.json"
-      folder: "Infrastructure"
-  
-  datasources:
-    - name: "Prometheus"
-      type: "prometheus"
-      url: "http://prometheus-server.prometheus.svc.cluster.local:9090"
-      access: "proxy"
-      is_default: true
-      
-    - name: "Loki"
-      type: "loki"
-      url: "http://loki.loki-stack.svc.cluster.local:3100"
-      
-    - name: "MySQL"
-      type: "mysql"
-      url: "mysql:3306"
-      database: "credit_scoring"
-      user: "grafana"
-      password_secret: "mysql-grafana-password"
+  categorical_features:
+    - checking_status
+    - credit_history
+    - purpose
+    - savings_status
+    - employment
+    - personal_status
+    - other_parties
+    - property_magnitude
+    - other_payment_plans
+    - housing
+    - job
+    - own_telephone
+    - foreign_worker
 
-alertmanager:
-  enabled: true
-  config:
-    global:
-      slack_api_url_secret: "slack-webhook-url"
-      smtp_smarthost: "smtp.gmail.com:587"
-      smtp_from: "alerts@your-bank.com"
-      smtp_auth_username_secret: "smtp-username"
-      smtp_auth_password_secret: "smtp-password"
-      
-    route:
-      group_by: ['alertname', 'cluster', 'service']
-      group_wait: "10s"
-      group_interval: "10s"
-      repeat_interval: "1h"
-      receiver: 'slack-notifications'
-      
-      routes:
-        - match:
-            severity: critical
-          receiver: 'pagerduty'
-          continue: true
-          
-        - match:
-            severity: warning
-          receiver: 'email-notifications'
-          
-    receivers:
-      - name: 'slack-notifications'
-        slack_configs:
-          - channel: '#mlops-alerts'
-            send_resolved: true
-            title: '{{ template "slack.default.title" . }}'
-            text: '{{ template "slack.default.text" . }}'
-            
-      - name: 'email-notifications'
-        email_configs:
-          - to: 'ml-team@your-bank.com'
-            send_resolved: true
-            
-      - name: 'pagerduty'
-        pagerduty_configs:
-          - service_key_secret: 'pagerduty-service-key'
-            send_resolved: true
+model:
+  version: "1.0.0"
+  reference_metrics_path: "models/trained/metrics.json"
 
-loki:
-  enabled: true
-  config:
-    auth_enabled: false
-    
-    ingester:
-      chunk_idle_period: "3m"
-      chunk_block_size: 262144
-      chunk_retain_period: "1m"
-      
-    schema_config:
-      configs:
-        - from: "2020-10-24"
-          store: "boltdb-shipper"
-          object_store: "s3"
-          schema: "v11"
-          index:
-            prefix: "index_"
-            period: "24h"
-            
-    storage_config:
-      boltdb_shipper:
-        active_index_directory: /tmp/loki/boltdb-shipper-active
-        cache_location: /tmp/loki/boltdb-shipper-cache
-        shared_store: s3
-        
-      aws:
-        s3: s3://eu-central-1/loki
-        s3forcepathstyle: true
+thresholds:
+  data_drift: 0.3
+  concept_drift: 0.2
+  max_drifted_columns_share: 0.3
+  max_drifted_columns_count: 5
+  retrain_data_drift: 0.5
+  retrain_concept_drift: 0.3
+  performance_decay: 10
 
-elasticsearch:
-  enabled: false  # Используем Loki вместо ELK
-  version: "7.17.0"
-  
-  resources:
-    requests:
-      memory: "4Gi"
-      cpu: "2"
-    limits:
-      memory: "8Gi"
-      cpu: "4"
+monitoring:
+  schedule: "daily"
+  min_samples: 100
+  prometheus_port: 8001
 
-kibana:
-  enabled: false
-  version: "7.17.0"
-
-ml_monitoring:
-  data_drift:
-    enabled: true
-    check_interval: "24h"
-    reference_data_path: "data/processed/train.csv"
-    window_size: 1000
-    min_samples: 100
-    
-    thresholds:
-      data_drift_score: 0.2
-      feature_drift_score: 0.3
-      share_of_drifted_features: 0.3
-      
-    detectors:
-      - name: "evidently"
-        type: "statistical"
-        test: "ks"
-        
-      - name: "alibi_detect"
-        type: "cd"
-        backend: "tensorflow"
-        
-  concept_drift:
-    enabled: true
-    check_interval: "24h"
-    
-    methods:
-      - name: "performance_monitoring"
-        metric: "accuracy"
-        window_size: 100
-        threshold: 0.05
-        
-      - name: "ddm"
-        warning_level: 2.0
-        drift_level: 3.0
-        min_samples: 30
-        
-  model_performance:
-    enabled: true
-    
-    metrics:
-      - name: "accuracy"
-        threshold: 0.75
-        
-      - name: "precision"
-        threshold: 0.7
-        
-      - name: "recall"
-        threshold: 0.65
-        
-      - name: "f1"
-        threshold: 0.7
-        
-      - name: "roc_auc"
-        threshold: 0.8
-        
-    tracking:
-      window_size: 100
-      calculate_interval: "1h"
-      
-  feature_importance:
-    enabled: true
-    calculate_interval: "7d"
-    method: "shap"
-    sample_size: 1000
-
-alerts:
-  data_drift:
-    - name: "high_data_drift"
-      condition: "data_drift_score > 0.3"
-      severity: "critical"
-      message: "Высокий дрифт данных обнаружен: {{ $value }}"
-      
-    - name: "medium_data_drift"
-      condition: "data_drift_score > 0.2"
-      severity: "warning"
-      message: "Средний дрифт данных обнаружен: {{ $value }}"
-      
-  concept_drift:
-    - name: "high_concept_drift"
-      condition: "concept_drift_score > 0.25"
-      severity: "critical"
-      message: "Высокий дрифт концепта обнаружен: {{ $value }}"
-      
-  performance:
-    - name: "accuracy_below_threshold"
-      condition: "accuracy < 0.75"
-      severity: "critical"
-      message: "Точность модели ниже порога: {{ $value }}"
-      
-    - name: "precision_below_threshold"
-      condition: "precision < 0.7"
-      severity: "warning"
-      message: "Precision модели ниже порога: {{ $value }}"
-      
-  infrastructure:
-    - name: "high_cpu_usage"
-      condition: "rate(container_cpu_usage_seconds_total{container=\"credit-scoring-api\"}[5m]) > 0.8"
-      severity: "warning"
-      message: "Высокая загрузка CPU: {{ $value }}"
-      
-    - name: "high_memory_usage"
-      condition: "container_memory_working_set_bytes{container=\"credit-scoring-api\"} / container_spec_memory_limit_bytes > 0.9"
-      severity: "warning"
-      message: "Высокая загрузка памяти: {{ $value }}"
-      
-    - name: "pod_restarts"
-      condition: "increase(kube_pod_container_status_restarts_total{container=\"credit-scoring-api\"}[1h]) > 3"
-      severity: "critical"
-      message: "Контейнер перезапускался {{ $value }} раз за последний час"
-      
-    - name: "service_down"
-      condition: "up{job=\"credit-scoring-api\"} == 0"
-      severity: "critical"
-      message: "Сервис кредитного скоринга недоступен"
-
-runbooks:
-  data_drift:
-    - name: "investigate_data_drift"
-      steps:
-        - "Проверить отчет о дрифте в Grafana"
-        - "Идентифицировать фичи с наибольшим дрифтом"
-        - "Проверить источники данных на корректность"
-        - "Если дрифт подтвержден, запустить переобучение модели"
-        
-  concept_drift:
-    - name: "investigate_concept_drift"
-      steps:
-        - "Проверить метрики производительности модели"
-        - "Анализировать изменения в бизнес-процессах"
-        - "Проверить корректность разметки данных"
-        - "Запустить переобучение с новыми данными"
-        
-  model_degradation:
-    - name: "handle_model_degradation"
-      steps:
-        - "Переключиться на предыдущую версию модели"
-        - "Проанализировать причины деградации"
-        - "Запустить экстренное переобучение"
-        - "Провести тщательное тестирование новой модели"
-        
-  infrastructure_issues:
-    - name: "handle_high_resource_usage"
-      steps:
-        - "Проверить метрики ресурсов в Prometheus"
-        - "Увеличить лимиты ресурсов в Kubernetes"
-        - "Проверить на наличие утечек памяти"
-        - "Оптимизировать код инференса"
-
-dashboard_refresh: "30s"
-retention_period: "30d"
+mlflow:
+  tracking_uri: "http://localhost:5000"

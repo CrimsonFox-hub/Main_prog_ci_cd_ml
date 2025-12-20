@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: credit-scoring-config
+  namespace: ml-production
+data:
+  MODEL_PATH: "/models/credit_scoring.onnx"
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  MLFLOW_TRACKING_URI: "http://mlflow.ml-production.svc.cluster.local:5000"
+  PROMETHEUS_PORT: "8000"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: ml-production
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+    http {
+      upstream api {
+        server credit-scoring-api:8000;
+      }
+      server {
+        listen 80;
+        location / {
+          proxy_pass http://api;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+        }
+        location /metrics {
+          proxy_pass http://api:8000;
+        }
+      }
+    }

@@ -1,0 +1,47 @@
+Структура для Terraform:
+text
+infrastructure/
+├── modules/
+│   ├── network/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── kubernetes/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── storage/
+│   │   └── main.tf
+│   └── monitoring/
+│       └── main.tf
+├── environments/
+│   ├── staging/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── terraform.tfvars
+│   └── production/
+│       ├── main.tf
+│       ├── variables.tf
+│       └── terraform.tfvars
+└── scripts/
+    └── deploy.sh
+
+
+    Структура Kubernetes:
+text
+kubernetes/
+├── base/
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   └── configs.yaml
+├── credit-scoring-api/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── hpa.yaml
+├── monitoring-stack/
+│   ├── prometheus/
+│   ├── grafana/
+│   └── loki/
+└── ml-pipelines/
+    └── kubeflow/

@@ -1,30 +1,274 @@
-# … предыдущие этапы (тесты, линтинг)
-build-and-push-docker:
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM
+  workflow_dispatch:  # Manual trigger
+
+env:
+  REGISTRY: cr.yandex.cloud
+  IMAGE_NAME: ${{ secrets.YC_REGISTRY_ID }}/credit-scoring
+  K8S_NAMESPACE: ml-production
+  TF_VERSION: 1.5.0
+
+jobs:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-
-    - name: Build Docker image
-      run: |
-        docker build -t your-repo/credit-scoring-api:latest -f deployment/docker/Dockerfile .
+    - uses: actions/checkout@v3
     
-    - name: Push Docker image
-      run: |
-        docker push your-repo/credit-scoring-api:latest
-
-deploy-to-kubernetes:
-    runs-on: ubuntu-latest
-    needs: build-and-push-docker
-    if: github.ref == 'refs/heads/main'
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - name: Deploy to Kubernetes
-      uses: kelseyhightower/awesome-kubernetes-actions@v1
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        kubeconfig: ${{ secrets.KUBECONFIG }}
-        command: kubectl apply -f deployment/kubernetes/
-    - name: Wait for deployment to complete
+        python-version: '3.10'
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
       run: |
-    kubectl rollout status deployment/credit-scoring-api
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install -r requirements.txt
+    
+    - name: Lint code
+      run: |
+        black --check src/ tests/
+        flake8 src/ tests/ --max-line-length=100
+        mypy src/ --ignore-missing-imports
+    
+    - name: Run tests
+      run: |
+        pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=html
+        pytest tests/integration/ -v
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+    
+    - name: Security scan
+      run: |
+        pip install bandit safety
+        bandit -r src/ -f json -o bandit-report.json
+        safety check -r requirements.txt
+    
+  build-and-push:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Yandex Container Registry
+      run: |
+        echo ${{ secrets.YC_SA_KEY }} | docker login \
+          --username json_key \
+          --password-stdin \
+          ${{ env.REGISTRY }}
+    
+    - name: Build and push API image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./docker/api/Dockerfile
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Build and push Training image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./docker/training/Dockerfile
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-training:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-training:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Build and push Monitoring image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./docker/monitoring/Dockerfile
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-monitoring:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+  
+  terraform-plan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+    
+    - name: Configure Yandex Cloud credentials
+      env:
+        YC_TOKEN: ${{ secrets.YC_TOKEN }}
+        YC_CLOUD_ID: ${{ secrets.YC_CLOUD_ID }}
+        YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      run: |
+        echo "token = \"$YC_TOKEN\"" > terraform.tfvars
+        echo "cloud_id = \"$YC_CLOUD_ID\"" >> terraform.tfvars
+        echo "folder_id = \"$YC_FOLDER_ID\"" >> terraform.tfvars
+    
+    - name: Terraform Init
+      run: terraform init -backend-config="access_key=${{ secrets.YC_ACCESS_KEY }}" -backend-config="secret_key=${{ secrets.YC_SECRET_KEY }}"
+      working-directory: ./infrastructure/environments/staging
+    
+    - name: Terraform Plan
+      run: terraform plan -var-file="terraform.tfvars"
+      working-directory: ./infrastructure/environments/staging
+  
+  deploy-staging:
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 --decode > $HOME/.kube/config
+        kubectl cluster-info
+    
+    - name: Deploy to Kubernetes
+      run: |
+        # Apply base configurations
+        kubectl apply -f kubernetes/base/namespace.yaml
+        kubectl apply -f kubernetes/base/configs.yaml
+        
+        # Apply secrets
+        kubectl create secret generic db-credentials \
+          --from-literal=url=${{ secrets.DATABASE_URL }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        kubectl create secret generic redis-credentials \
+          --from-literal=url=${{ secrets.REDIS_URL }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Deploy application
+        kubectl apply -f kubernetes/credit-scoring-api/
+        
+        # Update deployment with new image
+        kubectl set image deployment/credit-scoring-api \
+          api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ github.sha }} \
+          -n ${{ env.K8S_NAMESPACE }}
+        
+        # Wait for rollout
+        kubectl rollout status deployment/credit-scoring-api -n ${{ env.K8S_NAMESPACE }}
+    
+    - name: Run integration tests
+      run: |
+        kubectl wait --for=condition=ready pod -l app=credit-scoring-api -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+        ./scripts/run_integration_tests.sh
+    
+    - name: Send notification
+      if: success()
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_TITLE: "✅ Staging deployment successful"
+        SLACK_MESSAGE: "Version ${{ github.sha }} deployed to staging"
+  
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 --decode > $HOME/.kube/config
+    
+    - name: Canary deployment
+      run: |
+        # Deploy canary version (10% traffic)
+        kubectl apply -f kubernetes/canary/canary.yaml
+        
+        # Monitor canary metrics
+        sleep 60  # Wait for metrics
+        
+        # If metrics are good, increase to 50%
+        kubectl patch virtualservice credit-scoring-api \
+          -n ${{ env.K8S_NAMESPACE }} \
+          -p '{"spec":{"http":[{"route":[{"destination":{"host":"credit-scoring-api","subset":"stable"},"weight":50},{"destination":{"host":"credit-scoring-api","subset":"canary"},"weight":50}]}]}}'
+        
+        sleep 120
+        
+        # Full rollout
+        kubectl patch virtualservice credit-scoring-api \
+          -n ${{ env.K8S_NAMESPACE }} \
+          -p '{"spec":{"http":[{"route":[{"destination":{"host":"credit-scoring-api","subset":"canary"},"weight":100}]}]}}'
+    
+    - name: Run production tests
+      run: |
+        ./scripts/run_production_tests.sh
+    
+    - name: Cleanup old deployments
+      run: |
+        kubectl delete deployment credit-scoring-api-previous -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+  
+  monitor-drift:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run drift detection
+      run: |
+        python src/ml_pipeline/monitoring/drift_detection.py \
+          --config configs/monitoring_config.yaml \
+          --hours 24 \
+          --output reports/drift_report_$(date +%Y%m%d).json
+    
+    - name: Upload drift report
+      uses: actions/upload-artifact@v3
+      with:
+        name: drift-report
+        path: reports/drift_report_*.json
+    
+    - name: Trigger retraining if needed
+      run: |
+        python scripts/trigger_retraining.py \
+          --report reports/drift_report_*.json \
+          --threshold 0.3

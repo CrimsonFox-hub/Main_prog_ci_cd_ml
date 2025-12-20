@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-storage
+  namespace: ml-production
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: yc-network-hdd
+  resources:
+    requests:
+      storage: 20Gi

@@ -1,0 +1,24 @@
+{
+  "benchmark_results": [
+    {
+      "model": "PyTorch",
+      "samples_per_sec": 333357.4948338897,
+      "latency_ms": 0.0029997825622558594
+    },
+    {
+      "model": "ONNX",
+      "samples_per_sec": 27777.399550984457,
+      "latency_ms": 0.03600049018859863,
+      "speedup_vs_pytorch": 0.08332615879785692
+    }
+  ],
+  "timestamp": "2025-12-18T16:35:25.967788",
+  "hardware": {
+    "cpu_cores": 6,
+    "device": "CPU"
+  },
+  "summary": {
+    "best_performance": "PyTorch",
+    "pytorch_to_onnx_speedup": 0.08332615879785692
+  }
+}

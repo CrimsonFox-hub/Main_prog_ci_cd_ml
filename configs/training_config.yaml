@@ -1,7 +1,4 @@
-mlflow:
-  tracking_uri: "http://localhost:5000"
-  experiment_name: "credit-scoring"
-
+# configs/training_config.yaml
 data:
   train_path: "data/processed/train.csv"
   test_path: "data/processed/test.csv"
@@ -10,11 +7,9 @@ data:
 model_paths:
   trained: "models/trained/credit_scoring_model.pth"
   onnx: "models/trained/credit_scoring.onnx"
-  tensorflow: "models/trained/model"
   best_model: "models/trained/best_model.pth"
   final_model: "models/trained/final_model.pth"
   metrics: "models/trained/metrics.json"
-  scaler: "models/processed/scaler.pkl"
 
 model:
   hidden_layers: [128, 64, 32]

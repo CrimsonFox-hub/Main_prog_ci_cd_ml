@@ -1,10 +1,19 @@
+# docker-compose.yml (упрощенный для локальной разработки)
 version: '3.8'
 
 services:
-  # PostgreSQL для хранения данных
+  # MLflow для экспериментов (опционально, можно отключить)
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.6.0
+    ports:
+      - "5000:5000"
+    command: mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts --host 0.0.0.0
+    volumes:
+      - ./mlflow:/mlflow
+
+  # PostgreSQL (если нужен)
   postgres:
     image: postgres:15-alpine
-    container_name: credit-scoring-postgres
     environment:
       POSTGRES_DB: credit_scoring
       POSTGRES_USER: postgres
@@ -13,301 +22,20 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - mlops-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # Redis для кеширования
-  redis:
-    image: redis:7-alpine
-    container_name: credit-scoring-redis
-    ports:
-      - "6379:6379"
-    command: redis-server --requirepass redispassword
-    volumes:
-      - redis_data:/data
-    networks:
-      - mlops-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # MLflow для экспериментов
-  mlflow:
-    build:
-      context: .
-      dockerfile: docker/mlflow/Dockerfile
-    container_name: credit-scoring-mlflow
-    environment:
-      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-    ports:
-      - "5000:5000"
-    volumes:
-      - mlflow_artifacts:/mlflow
-    depends_on:
-      - minio
-    networks:
-      - mlops-network
-    command: >
-      mlflow server
-      --host 0.0.0.0
-      --port 5000
-      --backend-store-uri postgresql://postgres:postgres@postgres:5432/mlflow
-      --default-artifact-root s3://mlflow-artifacts
-
-  # MinIO для хранения артефактов
+  # MinIO для DVC (если используется)
   minio:
     image: minio/minio:latest
-    container_name: credit-scoring-minio
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     ports:
       - "9000:9000"
       - "9001:9001"
+    command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
-    command: server /data --console-address ":9001"
-    networks:
-      - mlops-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-
-  # API сервер
-  api:
-    build:
-      context: .
-      dockerfile: docker/api/Dockerfile
-      target: development
-    container_name: credit-scoring-api
-    environment:
-      - ENVIRONMENT=development
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/credit_scoring
-      - REDIS_URL=redis://:redispassword@redis:6379/0
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./src:/app/src
-      - ./configs:/app/configs
-      - ./models:/app/models
-      - ./data:/app/data
-      - ./logs:/app/logs
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      mlflow:
-        condition: service_started
-    networks:
-      - mlops-network
-    command: >
-      uvicorn src.api.app:app
-      --host 0.0.0.0
-      --port 8000
-      --reload
-      --log-level debug
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Prometheus для мониторинга
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: credit-scoring-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    networks:
-      - mlops-network
-
-  # Grafana для визуализации
-  grafana:
-    image: grafana/grafana:latest
-    container_name: credit-scoring-grafana
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./docker/grafana/datasources:/etc/grafana/provisioning/datasources
-    depends_on:
-      - prometheus
-    networks:
-      - mlops-network
-
-  # Airflow для оркестрации
-  airflow:
-    build:
-      context: .
-      dockerfile: docker/airflow/Dockerfile
-    container_name: credit-scoring-airflow
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql://postgres:postgres@postgres:5432/airflow
-      - AIRFLOW__CORE__FERNET_KEY=your-fernet-key-here
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__WEBSERVER__SECRET_KEY=your-secret-key-here
-    ports:
-      - "8080:8080"
-    volumes:
-      - airflow_dags:/opt/airflow/dags
-      - airflow_logs:/opt/airflow/logs
-      - airflow_plugins:/opt/airflow/plugins
-      - ./scripts/orchestration:/opt/airflow/dags
-      - ./configs:/opt/airflow/configs
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - mlops-network
-    command: >
-      bash -c "
-        airflow db init &&
-        airflow users create \
-          --username admin \
-          --firstname Admin \
-          --lastname User \
-          --role Admin \
-          --email admin@example.com \
-          --password admin &&
-        airflow webserver &
-        airflow scheduler
-      "
-
-  # Jupyter для анализа данных
-  jupyter:
-    build:
-      context: .
-      dockerfile: docker/jupyter/Dockerfile
-    container_name: credit-scoring-jupyter
-    environment:
-      - JUPYTER_TOKEN=devtoken
-    ports:
-      - "8888:8888"
-    volumes:
-      - ./notebooks:/home/jovyan/notebooks
-      - ./data:/home/jovyan/data
-      - ./src:/home/jovyan/src
-    networks:
-      - mlops-network
-
-  # Evidently для мониторинга дрифта
-  evidently:
-    build:
-      context: .
-      dockerfile: docker/evidently/Dockerfile
-    container_name: credit-scoring-evidently
-    ports:
-      - "8085:8085"
-    volumes:
-      - ./monitoring:/app/monitoring
-      - ./data:/app/data
-    networks:
-      - mlops-network
-    command: >
-      evidently ui
-      --datasource ./data/processed/train.csv:./data/processed/current.csv
-      --column-mapping ./configs/column_mapping.json
-
-  # Тестовый клиент для нагрузочного тестирования
-  locust:
-    image: locustio/locust:latest
-    container_name: credit-scoring-locust
-    ports:
-      - "8089:8089"
-    volumes:
-      - ./tests/load:/mnt/locust
-    networks:
-      - mlops-network
-    command: >
-      -f /mnt/locust/locustfile.py
-      --host=http://api:8000
-      --web-host=0.0.0.0
-
-  # ELK stack для логирования (опционально)
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
-    container_name: credit-scoring-elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
-    networks:
-      - mlops-network
-
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.10.0
-    container_name: credit-scoring-logstash
-    volumes:
-      - ./docker/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
-    depends_on:
-      - elasticsearch
-    networks:
-      - mlops-network
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.10.0
-    container_name: credit-scoring-kibana
-    ports:
-      - "5601:5601"
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
-    networks:
-      - mlops-network
 
 volumes:
   postgres_data:
-  redis_data:
-  mlflow_artifacts:
   minio_data:
-  prometheus_data:
-  grafana_data:
-  airflow_dags:
-  airflow_logs:
-  airflow_plugins:
-  elasticsearch_data:
-
-networks:
-  mlops-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16

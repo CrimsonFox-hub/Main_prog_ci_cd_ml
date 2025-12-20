@@ -1,0 +1,12 @@
+{
+  "quantization": {
+    "original_size_kb": 76.517578125,
+    "quantized_size_kb": 51.35546875,
+    "compression_ratio": 1.4899596866205218
+  },
+  "pruning": {
+    "pruned_parameters_percentage": 20,
+    "inference_time_ms": 0.22198748588562012
+  },
+  "timestamp": "2025-12-18T16:35:26.332810"
+}

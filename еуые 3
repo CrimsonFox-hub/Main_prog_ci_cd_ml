@@ -1,0 +1,229 @@
+Шаг 1: Подготовка Yandex Cloud
+1.1 Настройка аккаунта
+bash
+# Установите YC CLI
+curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+source ~/.bashrc
+
+# Инициализация
+yc init
+
+# Создайте платежный аккаунт (если нет)
+yc billing account create --name mlops-billing
+
+# Проверьте квоты
+yc compute cloud get-quotas
+yc managed-kubernetes get-quotas
+1.2 Создание облака и каталога
+bash
+# Создайте облако (если нет)
+yc resource-manager cloud create --name mlops-cloud
+
+# Создайте каталог
+yc resource-manager folder create --name mlops-folder --cloud-name mlops-cloud
+
+# Получите ID
+YC_CLOUD_ID=$(yc resource-manager cloud get --name mlops-cloud --format json | jq -r .id)
+YC_FOLDER_ID=$(yc resource-manager folder get --name mlops-folder --format json | jq -r .id)
+
+echo "Cloud ID: $YC_CLOUD_ID"
+echo "Folder ID: $YC_FOLDER_ID"
+
+1.3 Создание сервисных аккаунтов
+bash
+# Для Terraform
+yc iam service-account create --name terraform-sa
+yc resource-manager folder add-access-binding $YC_FOLDER_ID \
+  --role editor \
+  --subject serviceAccount:$(yc iam service-account get --name terraform-sa --format json | jq -r .id)
+
+# Для Kubernetes
+yc iam service-account create --name k8s-sa
+yc resource-manager folder add-access-binding $YC_FOLDER_ID \
+  --role editor \
+  --subject serviceAccount:$(yc iam service-account get --name k8s-sa --format json | jq -r .id)
+
+# Для Container Registry
+yc iam service-account create --name registry-sa
+yc resource-manager folder add-access-binding $YC_FOLDER_ID \
+  --role container-registry.images.pusher \
+  --subject serviceAccount:$(yc iam service-account get --name registry-sa --format json | jq -r .id)
+
+  1.4 Создание ключей доступа
+bash
+# Создайте ключи для сервисных аккаунтов
+yc iam key create \
+  --service-account-name terraform-sa \
+  --output terraform-key.json
+
+yc iam key create \
+  --service-account-name registry-sa \
+  --output registry-key.json
+
+# Создайте статический ключ для S3
+yc iam access-key create \
+  --service-account-name terraform-sa \
+  --description "For S3 access" \
+  --format json > s3-keys.json
+
+  Шаг 5: Настройка CI/CD секретов
+5.1 Получите все необходимые ключи:
+bash
+# 1. Токен для YC
+YC_TOKEN=$(yc iam create-token)
+
+# 2. ID облака и каталога
+YC_CLOUD_ID=$(yc config get cloud-id)
+YC_FOLDER_ID=$(yc config get folder-id)
+
+# 3. ID регистра
+YC_REGISTRY_ID=$(yc container registry get --name mlops-registry --format json | jq -r .id)
+
+# 4. Ключи сервисного аккаунта для S3
+YC_ACCESS_KEY=$(jq -r .access_key.key_id s3-keys.json)
+YC_SECRET_KEY=$(jq -r .secret s3-keys.json)
+
+# 5. Kubeconfig
+yc managed-kubernetes cluster get-credentials mlops-cluster-staging --external
+cat ~/.kube/config | base64
+
+# 6. Пароль БД
+DB_PASSWORD=$(terraform output -raw database_password)
+5.2 Добавьте секреты в GitHub:
+text
+GitHub → Settings → Secrets and variables → Actions → New repository secret
+
+Добавьте:
+- YC_TOKEN
+- YC_CLOUD_ID
+- YC_FOLDER_ID
+- YC_REGISTRY_ID
+- YC_SA_KEY (содержимое terraform-key.json)
+- YC_ACCESS_KEY
+- YC_SECRET_KEY
+- KUBECONFIG_STAGING (base64 kubeconfig)
+- DATABASE_URL
+- SLACK_WEBHOOK_URL (опционально)
+🚀 Шаг 6: Развертывание
+6.1 Запуск Terraform:
+bash
+# 1. Инициализация
+cd infrastructure/environments/staging
+cp terraform.tfvars.example terraform.tfvars
+# Отредактируйте terraform.tfvars с вашими значениями
+
+terraform init
+
+# 2. План
+terraform plan
+
+# 3. Применение
+terraform apply -auto-approve
+
+# 4. Получите outputs
+terraform output -json
+6.2 Настройка kubectl:
+bash
+# Получите kubeconfig
+yc managed-kubernetes cluster get-credentials \
+  $(terraform output -raw cluster_id) \
+  --external
+
+# Проверьте
+kubectl cluster-info
+kubectl get nodes
+6.3 Установка nginx-ingress:
+bash
+# Установите ingress-nginx
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+
+# Дождитесь запуска
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s
+6.4 Установка cert-manager:
+bash
+# Установите cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.yaml
+
+# Дождитесь запуска
+kubectl wait --namespace cert-manager \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/instance=cert-manager \
+  --timeout=120s
+6.5 Развертывание приложения:
+bash
+# 1. Примените базовые конфигурации
+kubectl apply -f kubernetes/base/
+
+# 2. Создайте секреты
+kubectl create secret generic db-credentials \
+  --namespace ml-production \
+  --from-literal=url="postgresql://mlops_user:${DB_PASSWORD}@${DB_HOST}:6432/credit_scoring" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Примените манифесты приложения
+kubectl apply -f kubernetes/credit-scoring-api/
+
+# 4. Проверьте
+kubectl get all -n ml-production
+kubectl get ingress -n ml-production
+📊 Шаг 7: Мониторинг и логирование
+7.1 Установите мониторинг:
+bash
+# 1. Установите kube-prometheus-stack
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm install prometheus prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace \
+  --values kubernetes/monitoring-stack/values.yaml
+
+# 2. Установите Loki
+helm repo add grafana https://grafana.github.io/helm-charts
+helm install loki grafana/loki-stack \
+  --namespace logging \
+  --create-namespace \
+  --set grafana.enabled=false
+7.2 Настройка Grafana:
+bash
+# Получите пароль admin
+kubectl get secret --namespace monitoring prometheus-grafana -o jsonpath="{.data.admin-password}" | base64 --decode
+
+# Пробросьте порт
+kubectl port-forward --namespace monitoring svc/prometheus-grafana 3000:80
+
+# Откройте http://localhost:3000
+# Импортируйте дашборды из kubernetes/monitoring-stack/grafana/
+🔧 Шаг 8: Полезные команды для управления
+Команды для отладки:
+bash
+# Посмотреть логи
+kubectl logs -l app=credit-scoring-api -n ml-production --tail=50
+
+# Проверить события
+kubectl get events -n ml-production --sort-by='.lastTimestamp'
+
+# Проверить ресурсы
+kubectl top pods -n ml-production
+kubectl top nodes
+
+# Проверить сеть
+kubectl run -i --tty --rm debug --image=nicolaka/netshoot --restart=Never -- sh
+
+# Получить внешний IP
+kubectl get ingress -n ml-production -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}'
+Масштабирование:
+bash
+# Масштабировать deployment
+kubectl scale deployment/credit-scoring-api --replicas=5 -n ml-production
+
+# Обновить образ
+kubectl set image deployment/credit-scoring-api \
+  api=cr.yandexcloud.net/${YC_REGISTRY_ID}/credit-scoring-api:latest \
+  -n ml-production
+
+# Откатить
+kubectl rollout undo deployment/credit-scoring-api -n ml-production

@@ -90,6 +90,16 @@ install:
 	$(VENV_PIP) install -r requirements.txt
 	$(VENV_PIP) install -r requirements-dev.txt
 
+
+install-onnx:
+	@echo "Установка зависимостей для ONNX..."
+	$(VENV_PIP) install onnx onnxruntime onnxscript
+	$(VENV_PIP) install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Обновите правило train:
+train:
+	@echo "Обучение нейронной сети..."
+	$(VENV_PYTHON) src/ml_pipeline/training/train_model.py --config configs/training_config.yaml --skip-optimization
 # Тестирование
 test:
 	@echo "Запуск тестов..."
