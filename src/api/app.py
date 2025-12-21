@@ -88,8 +88,8 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: str
     version: str
-    model_loaded: bool
-    services: Dict[str, str]
+    model_loaded: bool  # Добавьте это обязательное поле
+    services: dict  # И это обязательное поле
 
 class FeatureRequest(BaseModel):
     age: int = Field(25, ge=18, le=100, description="Возраст заемщика")
@@ -206,7 +206,13 @@ async def health_check():
     return HealthResponse(
         status="healthy",
         timestamp=datetime.now().isoformat(),
-        version="1.0.0"
+        version="1.0.0",
+        model_loaded=True,  # Укажите реальное состояние загрузки модели
+        services={  # Укажите статусы зависимостей
+            "database": "connected",
+            "redis": "connected",
+            "mlflow": "available"
+        }
     )
 
 @app.get("/ping")
