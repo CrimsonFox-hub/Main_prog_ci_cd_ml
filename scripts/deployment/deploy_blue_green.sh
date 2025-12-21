@@ -2,8 +2,6 @@
 set -e
 
 # Blue-green deployment script
-# Этап 4: Стратегии развертывания
-
 BLUE_APP="credit-scoring-api-blue"
 GREEN_APP="credit-scoring-api-green"
 NAMESPACE="${K8S_NAMESPACE:-credit-scoring}"

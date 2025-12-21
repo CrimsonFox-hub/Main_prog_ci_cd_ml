@@ -1,126 +1,150 @@
 # Основные зависимости
-torch>=2.0.0
-torchvision>=0.15.0
-onnx>=1.14.0
-onnxruntime>=1.15.0
-onnxruntime-gpu>=1.15.0; sys_platform != 'win32'
-onnxruntime-directml>=1.15.0; sys_platform == 'win32'
+torch
+torchvision
+onnx
+onnxruntime
+onnxruntime-directml; sys_platform == 'win32'
 
 # Data processing
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn>=1.3.0
-scipy>=1.10.0
+panda
+numpy
+scikit-learn
+scipy
+psutil
 
 # API
-fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
-pydantic>=2.0.0
-python-multipart>=0.0.6
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
 
 # Базы данных и кеширование
-psycopg2-binary>=2.9.0
-redis>=4.5.0
-sqlalchemy>=2.0.0
-alembic>=1.11.0
+psycopg2-binary
+redis
+sqlalchemy
+alembic
 
 # Конфигурация и логирование
-pyyaml>=6.0
-python-dotenv>=1.0.0
-structlog>=23.0.0
-prometheus-client>=0.17.0
+pyyaml
+python-dotenv
+structlog
+prometheus-client
 
 # MLOps инструменты
-mlflow>=2.4.0
-dvc[s3]>=3.0.0
-evidently>=0.3.0
-great-expectations>=0.17.0
+mlflow
+dvc[s3]
+evidently
+great-expectations
 
 # Контейнеризация и оркестрация
-docker>=6.0.0
-kubernetes>=26.0.0
+docker
+kubernetes
 
 # Мониторинг
-prometheus-client>=0.17.0
-grafana-api>=1.0.0
+prometheus-client
+grafana-api
 
 # Утилиты
-tqdm>=4.65.0
-click>=8.1.0
-requests>=2.31.0
-tenacity>=8.2.0
-cachetools>=5.3.0
-
+tqdm
+click
+requests
+tenacity
+cachetools
 # Для Windows
-pywin32>=305; sys_platform == 'win32'
-colorama>=0.4.0
+pywin32; sys_platform == 'win32'
+colorama
 
 # Безопасность
-cryptography>=41.0.0
-python-jose[cryptography]>=3.3.0
-passlib[bcrypt]>=1.7.4
+cryptography
+python-jose[cryptography]
+passlib[bcrypt]
 
 # Основные зависимости для разработки
--r requirements.txt
 
 # Тестирование
-pytest>=7.0.0
-pytest-cov>=4.0.0
-pytest-mock>=3.10.0
-pytest-asyncio>=0.21.0
-pytest-xdist>=3.2.0
-locust>=2.15.0
+pytest
+pytest-cov
+pytest-mock
+pytest-asyncio
+pytest-xdist
+locust
 
 # Линтинг и форматирование
-flake8>=6.0.0
-black>=23.0.0
-isort>=5.12.0
-mypy>=1.0.0
-bandit>=1.7.5
-safety>=2.3.0
-pre-commit>=3.0.0
+flake8
+black
+isort
+mypy
+bandit
+safety
+pre-commit
 
 # Документация
-pdoc>=12.0.0
-sphinx>=6.0.0
-sphinx-rtd-theme>=1.2.0
+pdoc
+sphinx
+sphinx-rtd-theme
 
 # Утилиты для разработки
-ipython>=8.0.0
-jupyter>=1.0.0
-jupyterlab>=4.0.0
-notebook>=6.5.0
+ipython
+jupyter
+jupyterlab
+notebook
 
-# Для Windows
-pywin32>=305; sys_platform == 'win32'
-colorama>=0.4.0
 
 # Мониторинг и профилирование
-memory-profiler>=0.60.0
-line-profiler>=4.0.0
-snakeviz>=2.1.0
+memory-profiler
+line-profiler
+snakeviz
 
 # requirements-ml.txt
-torch==2.0.1
-torchvision==0.15.2
-torchaudio==2.0.2
+torch
+torchvision
+torchaudio
 
 # ONNX
-onnx==1.14.1
-onnxruntime==1.16.0
-onnxscript==0.1.0.dev20230829
+onnx
+onnxruntime
+
 
 # Модели и оптимизация
-scikit-learn==1.3.0
-xgboost==1.7.6
-lightgbm==4.1.0
+scikit-learn
+xgboost
+lightgbm
 
 # Мониторинг
-evidently==0.3.0
-alibi-detect==0.11.2
-mlflow==2.6.0
+evidently
+alibi-detect
+mlflow
 
 # Данные
-pandas==2.0.3
-numpy==1.24.3
-dvc==3.0.3
+pandas
+numpy
+dvc
+
+
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==1.10.13
+python-multipart==0.0.6
+pandas==2.1.4
+numpy==1.26.0
+scikit-learn==1.3.2
+psycopg2-binary==2.9.9
+redis==5.0.1
+sqlalchemy==2.0.23
+pyyaml==6.0.1
+python-dotenv==1.0.0
+mlflow==2.9.2
+dvc[s3]==3.41.0
+evidently==0.4.14
+onnx==1.14.1
+onnxruntime==1.16.3
+torch==2.1.2
+torchvision==0.16.2
+prometheus-client==0.19.0
+tqdm==4.66.1
+click==8.1.7
+requests==2.31.0
+tenacity==8.2.3
+cryptography==41.0.7
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4

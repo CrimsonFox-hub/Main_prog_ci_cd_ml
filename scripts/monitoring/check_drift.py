@@ -1,6 +1,5 @@
 """
 Мониторинг дрифта данных и концепта
-Этап 6: Детектирование дрифта с использованием Evidently AI
 """
 import pandas as pd
 import numpy as np
@@ -451,12 +450,9 @@ def main():
         print(f"Причины: {', '.join(summary['reasons'])}")
     
     print(f"\nОтчеты сохранены в: {args.output_dir}")
-    
-    # Для CI/CD: возвращаем код выхода в зависимости от результатов
+
     if summary['should_retrain']:
         print("\nРекомендация: запустить переобучение модели")
-        # В CI/CD можно установить специальный флаг или выйти с кодом 1
-        # exit(1)
 
 if __name__ == "__main__":
     main()

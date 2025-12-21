@@ -59,8 +59,6 @@ def download_german_credit(output_dir: str = "data/raw") -> pd.DataFrame:
         traceback.print_exc()
         sys.exit(1)
 
-# ЗАМЕНИТЕ функцию create_sample_data в download_data.py:
-
 def create_sample_data(output_dir: str = "data/raw") -> pd.DataFrame:
     """Создание тестовых данных если не удается скачать"""
     print("Создание тестовых данных...")

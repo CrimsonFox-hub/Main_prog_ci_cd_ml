@@ -1,4 +1,4 @@
-# Конфигурация CI/CD pipeline
+# Конфигурация CI/CD
 environments:
   staging:
     name: "staging"

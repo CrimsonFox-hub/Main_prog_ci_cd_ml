@@ -144,11 +144,11 @@ dag = DAG(
     tags=['mlops', 'retraining', 'credit-scoring'],
     on_success_callback=lambda context: notify_slack(
         context, 
-        f"✅ DAG {context['dag'].dag_id} completed successfully"
+        f"DAG {context['dag'].dag_id} completed successfully"
     ),
     on_failure_callback=lambda context: notify_slack(
         context, 
-        f"❌ DAG {context['dag'].dag_id} failed", 
+        f"DAG {context['dag'].dag_id} failed", 
         color="#ff0000"
     ),
 )

@@ -1,6 +1,6 @@
-# Конфигурация тренировки модели
+# Конфигурация обучения нейронной сети
 data:
-  source: "s3://credit-scoring-data/raw/german_credit.csv"
+  source: "data/processed/train.csv"
   target_column: "default"
   test_size: 0.2
   validation_size: 0.1
@@ -14,24 +14,36 @@ data:
       missing: "mode"
 
 model:
-  type: "random_forest"  # или "nn" для нейронной сети
+  type: "neural_network"
   version: "2.0.0"
   
-  random_forest:
-    n_estimators: 100
-    max_depth: 10
-    min_samples_split: 5
-    
   neural_network:
-    hidden_layers: [64, 32, 16]
+    architecture: "simple"
+    hidden_layers: [128, 64, 32]
     dropout: 0.3
     activation: "relu"
     output_activation: "sigmoid"
+    batch_norm: true
+    weight_decay: 0.0001
+
+  onnx_export:
+    enabled: true
+    opset_version: 14
+    dynamic_axes:
+      input: [0]
+      output: [0]
+    optimization:
+      enable_quantization: true
+      quantization_type: "int8"
+      enable_pruning: false
+      pruning_rate: 0.2
 
 training:
   batch_size: 32
   epochs: 100
   learning_rate: 0.001
+  optimizer: "adam"
+  scheduler: "plateau"
   early_stopping_patience: 10
   random_seed: 42
   
@@ -40,6 +52,10 @@ training:
     method: "random"
     n_iter: 20
     cv_folds: 5
+    params:
+      learning_rate: [0.0001, 0.001, 0.01]
+      hidden_layers: [[64, 32], [128, 64], [256, 128, 64]]
+      dropout: [0.2, 0.3, 0.4]
 
 evaluation:
   metrics: ["accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc"]
@@ -50,20 +66,26 @@ evaluation:
     folds: 5
 
 export:
-  formats: ["pkl", "onnx", "joblib"]
+  formats: ["pth", "onnx", "joblib"]
   quantization: true
   optimize: true
   
   mlflow:
     enabled: true
-    registry_model_name: "credit-scoring-model"
+    registry_model_name: "credit-scoring-neural-network"
     stage: "Production"
 
 monitoring:
   data_drift:
     enabled: true
     reference_dataset: "train"
+    threshold: 0.3
     
   model_drift:
     enabled: true
     window_size: 1000
+    threshold: 0.2
+  
+  performance_decay:
+    enabled: true
+    threshold: 0.05

@@ -455,7 +455,7 @@ class DataValidator:
             
             for check_name, check_key, check_data in checks:
                 if check_data:
-                    status = "✅" if check_key != 'missing_values' or check_data.get('max_missing_percent', 100) <= 5 else "⚠️"
+                    status = "" if check_key != 'missing_values' or check_data.get('max_missing_percent', 100) <= 5 else ""
                     details = str(check_data)[:100] + "..." if len(str(check_data)) > 100 else str(check_data)
                     html_content += f"<tr><td>{check_name}</td><td>{status}</td><td>{details}</td></tr>"
             
@@ -466,7 +466,7 @@ class DataValidator:
                 <p>Пройдено проверок: {results.get('summary', {}).get('passed_checks', 0)} / 
                    {results.get('summary', {}).get('total_checks', 0)}</p>
                 <p>Оценка: {results.get('summary', {}).get('validation_score', 0):.1f}%</p>
-                <p>Статус: {'✅ ВАЛИДНО' if results.get('summary', {}).get('is_valid', False) else '❌ НЕВАЛИДНО'}</p>
+                <p>Статус: {' ВАЛИДНО' if results.get('summary', {}).get('is_valid', False) else ' НЕВАЛИДНО'}</p>
             </div>
             """
         
@@ -494,19 +494,12 @@ class DataValidator:
     def generate_text_report(self, output_path: Path, report_data: Dict):
         """Генерация текстового отчета"""
         with open(output_path, 'w', encoding='utf-8') as f:
-            f.write("=" * 60 + "\n")
-            f.write("ОТЧЕТ ВАЛИДАЦИИ ДАННЫХ\n")
-            f.write("=" * 60 + "\n\n")
-            
+           
             f.write(f"Дата: {report_data['timestamp']}\n")
             f.write(f"Статус: {report_data['summary']['overall_status']}\n")
             f.write(f"Ошибки: {report_data['summary']['total_errors']}\n")
             f.write(f"Предупреждения: {report_data['summary']['total_warnings']}\n\n")
-            
-            f.write("=" * 60 + "\n")
-            f.write("РЕЗУЛЬТАТЫ ПО ДАТАСЕТАМ\n")
-            f.write("=" * 60 + "\n\n")
-            
+
             for dataset_name, results in report_data['validation_results'].items():
                 if 'error' in results:
                     f.write(f"Датасет: {dataset_name} - ОШИБКА: {results['error']}\n\n")
@@ -524,34 +517,12 @@ class DataValidator:
                 f.write("\n")
             
             if report_data['errors']:
-                f.write("=" * 60 + "\n")
-                f.write("ОШИБКИ\n")
-                f.write("=" * 60 + "\n")
                 for error in report_data['errors']:
                     f.write(f"• {error}\n")
             
             if report_data['warnings']:
-                f.write("\n" + "=" * 60 + "\n")
-                f.write("ПРЕДУПРЕЖДЕНИЯ\n")
-                f.write("=" * 60 + "\n")
                 for warning in report_data['warnings']:
                     f.write(f"• {warning}\n")
-            
-            f.write("\n" + "=" * 60 + "\n")
-            f.write("РЕКОМЕНДАЦИИ\n")
-            f.write("=" * 60 + "\n")
-            
-            if report_data['summary']['total_errors'] == 0:
-                f.write("✓ Данные прошли валидацию успешно\n")
-                f.write("✓ Можно использовать для обучения модели\n")
-            else:
-                f.write("✗ Обнаружены критические ошибки\n")
-                f.write("✗ Необходимо исправить данные перед обучением\n")
-            
-            if report_data['summary']['total_warnings'] > 0:
-                f.write("\nВНИМАНИЕ: Есть предупреждения, рекомендуется:\n")
-                for warning in report_data['warnings'][:5]:  # Первые 5 предупреждений
-                    f.write(f"  - {warning}\n")
 
 def main():
     parser = argparse.ArgumentParser(description='Валидация данных кредитного скоринга')
@@ -567,11 +538,7 @@ def main():
                        help='Какие данные валидировать')
     
     args = parser.parse_args()
-    
-    print("=" * 60)
-    print("ВАЛИДАЦИЯ ДАННЫХ ДЛЯ КРЕДИТНОГО СКОРИНГА")
-    print("=" * 60)
-    
+
     # Инициализация валидатора
     validator = DataValidator(args.config)
     
@@ -589,41 +556,27 @@ def main():
     json_report, html_report = validator.save_results(args.output_dir)
     
     # Вывод сводки
-    print("\n" + "=" * 60)
-    print("СВОДКА ВАЛИДАЦИИ")
-    print("=" * 60)
+
     
     total_errors = len(validator.errors)
     total_warnings = len(validator.warnings)
     
     if total_errors == 0:
-        print("✅ Валидация пройдена успешно")
+        print(" Валидация пройдена успешно")
     else:
-        print(f"❌ Обнаружено ошибок: {total_errors}")
+        print(f" Обнаружено ошибок: {total_errors}")
         for error in validator.errors[:3]:  # Первые 3 ошибки
             print(f"   - {error}")
         if total_errors > 3:
             print(f"   ... и еще {total_errors - 3} ошибок")
     
     if total_warnings > 0:
-        print(f"⚠️  Предупреждений: {total_warnings}")
+        print(f"  Предупреждений: {total_warnings}")
         for warning in validator.warnings[:3]:  # Первые 3 предупреждения
             print(f"   - {warning}")
         if total_warnings > 3:
             print(f"   ... и еще {total_warnings - 3} предупреждений")
-    
-    # Рекомендации
-    print("\n" + "=" * 60)
-    print("РЕКОМЕНДАЦИИ")
-    print("=" * 60)
-    
-    if total_errors == 0:
-        print("✓ Данные готовы к использованию в пайплайне ML")
-        print("✓ Можно приступать к обучению модели")
-    else:
-        print("✗ Необходимо исправить ошибки перед использованием данных")
-        print("✗ Проверьте файлы конфигурации и исходные данные")
-    
+        
     return 0 if total_errors == 0 else 1
 
 if __name__ == "__main__":

@@ -22,6 +22,10 @@ data:
   - existing_credits
   - num_dependents
   target_column: default
+  validation:
+    drift_threshold_psi: 0.2
+    outlier_threshold_iqr: 1.5
+    missing_values_strategy: "impute"
 model:
   paths:
     encoder: models/processed/encoder.pkl

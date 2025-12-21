@@ -1,376 +1,257 @@
 """
-Конвертация модели в ONNX и оптимизация
-Этап 1: Подготовка модели к промышленной эксплуатации
+Конвертация PyTorch модели в ONNX формат
 """
 import torch
-import torch.onnx
+import torch.nn as nn
 import onnx
 import onnxruntime as ort
 import numpy as np
-import time
-import json
 from pathlib import Path
-from typing import Dict, Tuple
-import yaml
+import json
+import time
+from typing import Dict, Any
+
+from src.utils.logger import model_logger
+from src.ml_pipeline.training.train_model import CreditScoringNN
 
 class ModelConverter:
-    """Класс для конвертации и оптимизации моделей"""
+    """Конвертер моделей в ONNX формат"""
     
-    def __init__(self, config_path: str = 'configs/training_config.yaml'):
-        with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
+    def __init__(self, model_path: str, input_size: int):
+        self.model_path = Path(model_path)
+        self.input_size = input_size
         
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    def convert_to_onnx(self, output_path: str = None, opset_version: int = 13) -> str:
+        """Конвертация модели в ONNX"""
+        if output_path is None:
+            output_path = self.model_path.with_suffix('.onnx')
         
-    def load_pytorch_model(self) -> torch.nn.Module:
-        """Загрузка PyTorch модели"""
-        from train_model import CreditScoringNN
-        
-        # Загрузка скейлера для определения размера входа
-        import joblib
-        scaler = joblib.load(self.config['model_paths']['scaler'])
-        input_size = scaler.n_features_in_
-        
-        # Создание и загрузка модели
-        model = CreditScoringNN(
-            input_size=input_size,
-            hidden_layers=self.config['model']['hidden_layers']
-        )
-        
-        model.load_state_dict(
-            torch.load(self.config['model_paths']['best_model'], map_location=self.device)
-        )
+        # Загрузка модели PyTorch
+        model = CreditScoringNN(input_size=self.input_size)
+        model.load_state_dict(torch.load(self.model_path, map_location='cpu'))
         model.eval()
         
-        return model, input_size
-    
-    def convert_to_onnx(self, model: torch.nn.Module, input_size: int) -> str:
-        """Конвертация PyTorch модели в ONNX"""
-        onnx_path = self.config['model_paths']['onnx_model']
-        
         # Создание примера входных данных
-        dummy_input = torch.randn(1, input_size, device=self.device)
+        dummy_input = torch.randn(1, self.input_size)
         
         # Экспорт в ONNX
         torch.onnx.export(
             model,
             dummy_input,
-            onnx_path,
+            output_path,
             export_params=True,
-            opset_version=11,
+            opset_version=opset_version,
+            do_constant_folding=True,
             input_names=['input'],
             output_names=['output'],
             dynamic_axes={
                 'input': {0: 'batch_size'},
                 'output': {0: 'batch_size'}
-            },
-            verbose=False
+            }
         )
         
-        # Валидация ONNX модели
-        onnx_model = onnx.load(onnx_path)
+        # Проверка корректности экспорта
+        onnx_model = onnx.load(output_path)
         onnx.checker.check_model(onnx_model)
         
-        print(f"Model successfully converted to ONNX: {onnx_path}")
-        return onnx_path
+        model_logger.info(f"Model converted to ONNX: {output_path}")
+        model_logger.info(f"Input shape: {dummy_input.shape}")
+        
+        return str(output_path)
     
-    def quantize_onnx_model(self, onnx_path: str) -> str:
-        """Квантование ONNX модели для уменьшения размера"""
-        from onnxruntime.quantization import quantize_dynamic, QuantType
-        
-        quantized_path = onnx_path.replace('.onnx', '_quantized.onnx')
-        
-        quantize_dynamic(
-            onnx_path,
-            quantized_path,
-            weight_type=QuantType.QUInt8
-        )
-        
-        # Проверка размера моделей
-        original_size = Path(onnx_path).stat().st_size / (1024 * 1024)  # MB
-        quantized_size = Path(quantized_path).stat().st_size / (1024 * 1024)  # MB
-        
-        print(f"Original ONNX size: {original_size:.2f} MB")
-        print(f"Quantized ONNX size: {quantized_size:.2f} MB")
-        print(f"Size reduction: {((original_size - quantized_size) / original_size * 100):.1f}%")
-        
-        return quantized_path
-    
-    def prune_model(self, model: torch.nn.Module, amount: float = 0.2) -> torch.nn.Module:
-        """Прунинг модели для ускорения инференса"""
-        import torch.nn.utils.prune as prune
-        
-        # Применение прунинга к линейным слоям
-        for name, module in model.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                prune.l1_unstructured(module, name='weight', amount=amount)
-                prune.remove(module, 'weight')  # Удаление маски, веса становятся разреженными
-        
-        return model
-    
-    def benchmark_inference(self, model, onnx_path: str) -> Dict:
-        """Бенчмаркинг производительности инференса"""
-        results = {}
-        
-        # Подготовка тестовых данных
-        test_data = torch.randn(1000, model.hidden_layers[0].in_features).to(self.device)
-        
-        # Бенчмарк PyTorch
-        print("Benchmarking PyTorch inference...")
-        
-        # Warmup
-        for _ in range(10):
-            _ = model(test_data[:10])
-        
-        # Измерение времени
-        torch.cuda.synchronize() if self.device.type == 'cuda' else None
-        start_time = time.time()
-        
-        with torch.no_grad():
-            for i in range(0, len(test_data), 32):
-                batch = test_data[i:i+32]
-                _ = model(batch)
-        
-        torch.cuda.synchronize() if self.device.type == 'cuda' else None
-        pytorch_time = time.time() - start_time
-        
-        # Бенчмарк ONNX
-        print("Benchmarking ONNX inference...")
-        ort_session = ort.InferenceSession(
-            onnx_path,
-            providers=['CUDAExecutionProvider' if self.device.type == 'cuda' else 'CPUExecutionProvider']
-        )
-        
-        input_name = ort_session.get_inputs()[0].name
-        test_data_np = test_data.cpu().numpy().astype(np.float32)
-        
-        # Warmup
-        for _ in range(10):
-            _ = ort_session.run(None, {input_name: test_data_np[:10]})
-        
-        # Измерение времени
-        start_time = time.time()
-        
-        for i in range(0, len(test_data_np), 32):
-            batch = test_data_np[i:i+32]
-            _ = ort_session.run(None, {input_name: batch})
-        
-        onnx_time = time.time() - start_time
-        
-        # Сравнение производительности
-        speedup = pytorch_time / onnx_time
-        
-        results = {
-            'pytorch_inference_time': pytorch_time,
-            'onnx_inference_time': onnx_time,
-            'speedup_factor': speedup,
-            'samples_per_second_pytorch': len(test_data) / pytorch_time,
-            'samples_per_second_onnx': len(test_data) / onnx_time
-        }
-        
-        print(f"\n=== Benchmark Results ===")
-        print(f"PyTorch: {pytorch_time:.3f}s ({len(test_data)/pytorch_time:.1f} samples/s)")
-        print(f"ONNX: {onnx_time:.3f}s ({len(test_data)/onnx_time:.1f} samples/s)")
-        print(f"Speedup: {speedup:.2f}x")
-        
-        return results
-    
-    def validate_conversion(self, model: torch.nn.Module, onnx_path: str) -> bool:
+    def validate_conversion(self, onnx_path: str, num_samples: int = 100) -> Dict[str, Any]:
         """Валидация корректности конвертации"""
-        print("Validating model conversion...")
+        model_logger.info("Validating ONNX conversion...")
         
+        # Загрузка оригинальной модели PyTorch
+        pt_model = CreditScoringNN(input_size=self.input_size)
+        pt_model.load_state_dict(torch.load(self.model_path, map_location='cpu'))
+        pt_model.eval()
+        
+        # Загрузка ONNX модели
         ort_session = ort.InferenceSession(onnx_path)
-        input_name = ort_session.get_inputs()[0].name
         
-        # Тестирование на случайных данных
-        test_input = torch.randn(10, model.hidden_layers[0].in_features)
+        # Генерация тестовых данных
+        test_inputs = torch.randn(num_samples, self.input_size)
         
-        # PyTorch вывод
-        model.eval()
+        # Предсказания PyTorch
+        pt_predictions = []
         with torch.no_grad():
-            pytorch_output = model(test_input).numpy()
+            for i in range(num_samples):
+                pt_output = pt_model(test_inputs[i:i+1])
+                pt_predictions.append(pt_output.numpy())
         
-        # ONNX вывод
-        onnx_output = ort_session.run(
-            None, 
-            {input_name: test_input.numpy().astype(np.float32)}
-        )[0]
+        # Предсказания ONNX Runtime
+        onnx_predictions = []
+        for i in range(num_samples):
+            ort_inputs = {ort_session.get_inputs()[0].name: test_inputs[i:i+1].numpy()}
+            ort_output = ort_session.run(None, ort_inputs)[0]
+            onnx_predictions.append(ort_output)
         
         # Сравнение результатов
-        max_diff = np.max(np.abs(pytorch_output - onnx_output))
-        mean_diff = np.mean(np.abs(pytorch_output - onnx_output))
+        pt_array = np.concatenate(pt_predictions, axis=0)
+        onnx_array = np.concatenate(onnx_predictions, axis=0)
         
-        print(f"Max difference: {max_diff:.6f}")
-        print(f"Mean difference: {mean_diff:.6f}")
+        # Расчет метрик сравнения
+        abs_diff = np.abs(pt_array - onnx_array)
+        mae = np.mean(abs_diff)
+        max_diff = np.max(abs_diff)
+        mse = np.mean((pt_array - onnx_array) ** 2)
         
-        if max_diff < 1e-4 and mean_diff < 1e-5:
-            print("✓ Conversion validation PASSED")
-            return True
+        validation_results = {
+            'mae': float(mae),
+            'max_diff': float(max_diff),
+            'mse': float(mse),
+            'num_samples': num_samples,
+            'conversion_valid': mae < 1e-4,  # Порог допустимой ошибки
+            'pt_shape': pt_array.shape,
+            'onnx_shape': onnx_array.shape
+        }
+        
+        model_logger.info(f"Validation results: {validation_results}")
+        
+        if validation_results['conversion_valid']:
+            model_logger.info("✅ ONNX conversion validated successfully!")
         else:
-            print("✗ Conversion validation FAILED")
-            return False
+            model_logger.warning("⚠️ ONNX conversion validation failed!")
+        
+        return validation_results
     
-    def run_benchmarks_on_resources(self) -> Dict:
-        """Нагрузочное тестирование на разных типах инстансов"""
-        print("\n=== Resource Benchmarking ===")
+    def benchmark_performance(self, onnx_path: str, pt_model_path: str = None) -> Dict[str, Any]:
+        """Сравнение производительности PyTorch и ONNX Runtime"""
+        model_logger.info("Benchmarking performance...")
         
-        benchmarks = {}
-        test_data = np.random.randn(10000, 20).astype(np.float32)
+        if pt_model_path is None:
+            pt_model_path = self.model_path
         
-        # Тестирование на CPU
-        cpu_session = ort.InferenceSession(
-            self.config['model_paths']['onnx_model'],
-            providers=['CPUExecutionProvider']
-        )
+        # Загрузка моделей
+        pt_model = CreditScoringNN(input_size=self.input_size)
+        pt_model.load_state_dict(torch.load(pt_model_path, map_location='cpu'))
+        pt_model.eval()
         
-        start_time = time.time()
-        for _ in range(100):
-            _ = cpu_session.run(None, {'input': test_data[:100]})
-        cpu_time = time.time() - start_time
+        ort_session = ort.InferenceSession(onnx_path)
         
-        benchmarks['cpu'] = {
-            'inference_time': cpu_time,
-            'throughput': 10000 / cpu_time
+        # Тестовые данные
+        batch_sizes = [1, 8, 16, 32, 64, 128]
+        num_iterations = 100
+        
+        benchmark_results = {
+            'pytorch': {},
+            'onnx': {}
         }
         
-        # Тестирование на GPU (если доступно)
-        if torch.cuda.is_available():
-            gpu_session = ort.InferenceSession(
-                self.config['model_paths']['onnx_model'],
-                providers=['CUDAExecutionProvider']
-            )
+        for batch_size in batch_sizes:
+            model_logger.info(f"Benchmarking batch size: {batch_size}")
             
-            start_time = time.time()
-            for _ in range(100):
-                _ = gpu_session.run(None, {'input': test_data[:100]})
-            gpu_time = time.time() - start_time
+            # Генерация данных
+            test_input = torch.randn(batch_size, self.input_size)
             
-            benchmarks['gpu'] = {
-                'inference_time': gpu_time,
-                'throughput': 10000 / gpu_time,
-                'speedup_vs_cpu': cpu_time / gpu_time
+            # PyTorch benchmark
+            pt_times = []
+            with torch.no_grad():
+                for _ in range(num_iterations):
+                    start_time = time.perf_counter()
+                    _ = pt_model(test_input)
+                    end_time = time.perf_counter()
+                    pt_times.append((end_time - start_time) * 1000)  # мс
+            
+            # ONNX Runtime benchmark
+            onnx_times = []
+            ort_inputs = {ort_session.get_inputs()[0].name: test_input.numpy()}
+            
+            for _ in range(num_iterations):
+                start_time = time.perf_counter()
+                _ = ort_session.run(None, ort_inputs)
+                end_time = time.perf_counter()
+                onnx_times.append((end_time - start_time) * 1000)  # мс
+            
+            # Расчет статистики
+            benchmark_results['pytorch'][batch_size] = {
+                'mean_ms': np.mean(pt_times),
+                'std_ms': np.std(pt_times),
+                'p95_ms': np.percentile(pt_times, 95),
+                'throughput_rps': batch_size / (np.mean(pt_times) / 1000)
+            }
+            
+            benchmark_results['onnx'][batch_size] = {
+                'mean_ms': np.mean(onnx_times),
+                'std_ms': np.std(onnx_times),
+                'p95_ms': np.percentile(onnx_times, 95),
+                'throughput_rps': batch_size / (np.mean(onnx_times) / 1000)
             }
         
-        # Генерация отчета
-        report = {
+        # Сравнение производительности
+        comparison = {}
+        for batch_size in batch_sizes:
+            pt_mean = benchmark_results['pytorch'][batch_size]['mean_ms']
+            onnx_mean = benchmark_results['onnx'][batch_size]['mean_ms']
+            
+            comparison[batch_size] = {
+                'speedup': pt_mean / max(onnx_mean, 1e-6),
+                'pt_throughput': benchmark_results['pytorch'][batch_size]['throughput_rps'],
+                'onnx_throughput': benchmark_results['onnx'][batch_size]['throughput_rps']
+            }
+        
+        # Сохранение результатов
+        results = {
+            'benchmark_results': benchmark_results,
+            'comparison': comparison,
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'benchmarks': benchmarks,
-            'recommended_config': self._get_recommended_config(benchmarks)
-        }
-        
-        # Сохранение отчета
-        report_path = 'reports/benchmark_report.json'
-        Path('reports').mkdir(exist_ok=True)
-        
-        with open(report_path, 'w') as f:
-            json.dump(report, f, indent=2)
-        
-        print(f"Benchmark report saved to: {report_path}")
-        return report
-    
-    def _get_recommended_config(self, benchmarks: Dict) -> Dict:
-        """Определение оптимальной конфигурации ресурсов"""
-        recommendations = {
-            'development': {
-                'instance_type': 'CPU',
-                'reason': 'Cost-effective for development and testing'
-            },
-            'staging': {
-                'instance_type': 'CPU with auto-scaling',
-                'min_replicas': 2,
-                'max_replicas': 5,
-                'reason': 'Balanced performance and cost for staging'
+            'hardware': {
+                'cpu': torch.get_num_threads(),
+                'device': 'CPU'
             }
         }
         
-        if 'gpu' in benchmarks:
-            gpu_speedup = benchmarks['gpu'].get('speedup_vs_cpu', 1)
-            
-            if gpu_speedup > 5:  # GPU значительно быстрее
-                recommendations['production'] = {
-                    'instance_type': 'GPU (V100 or better)',
-                    'min_replicas': 2,
-                    'max_replicas': 10,
-                    'autoscaling_metric': 'concurrent_requests',
-                    'target_utilization': 70,
-                    'reason': f'GPU provides {gpu_speedup:.1f}x speedup over CPU'
-                }
-            else:
-                recommendations['production'] = {
-                    'instance_type': 'High-CPU instance with auto-scaling',
-                    'min_replicas': 3,
-                    'max_replicas': 15,
-                    'reason': 'CPU provides sufficient performance at lower cost'
-                }
+        # Сохранение в файл
+        results_path = Path('reports/onnx_benchmark.json')
+        results_path.parent.mkdir(parents=True, exist_ok=True)
         
-        return recommendations
+        with open(results_path, 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        model_logger.info(f"Benchmark results saved to: {results_path}")
+        
+        return results
+
+def main():
+    """Пример использования конвертера"""
+    import argparse
     
-    def run_full_pipeline(self):
-        """Запуск полного пайплайна конвертации и оптимизации"""
-        print("Starting model conversion and optimization pipeline...")
-        
-        # 1. Загрузка модели
-        model, input_size = self.load_pytorch_model()
-        
-        # 2. Конвертация в ONNX
-        onnx_path = self.convert_to_onnx(model, input_size)
-        
-        # 3. Валидация конвертации
-        is_valid = self.validate_conversion(model, onnx_path)
-        
-        if not is_valid:
-            print("Warning: Model conversion validation failed!")
-        
-        # 4. Квантование
-        quantized_path = self.quantize_onnx_model(onnx_path)
-        
-        # 5. Прунинг (опционально)
-        if self.config['optimization'].get('enable_pruning', False):
-            print("Applying model pruning...")
-            model = self.prune_model(model, amount=0.2)
-            pruned_onnx_path = onnx_path.replace('.onnx', '_pruned.onnx')
-            self.convert_to_onnx(model, input_size, pruned_onnx_path)
-        
-        # 6. Бенчмаркинг
-        benchmark_results = self.benchmark_inference(model, onnx_path)
-        
-        # 7. Нагрузочное тестирование
-        resource_benchmarks = self.run_benchmarks_on_resources()
-        
-        # 8. Генерация итогового отчета
-        final_report = {
-            'conversion': {
-                'status': 'SUCCESS' if is_valid else 'WARNING',
-                'onnx_model_path': onnx_path,
-                'quantized_model_path': quantized_path,
-                'validation_passed': is_valid
-            },
-            'optimization': {
-                'original_size_mb': Path(onnx_path).stat().st_size / (1024 * 1024),
-                'quantized_size_mb': Path(quantized_path).stat().st_size / (1024 * 1024),
-                'size_reduction_percent': None
-            },
-            'performance': benchmark_results,
-            'resource_benchmarks': resource_benchmarks
-        }
-        
-        # Расчет сокращения размера
-        original_size = final_report['optimization']['original_size_mb']
-        quantized_size = final_report['optimization']['quantized_size_mb']
-        final_report['optimization']['size_reduction_percent'] = (
-            (original_size - quantized_size) / original_size * 100
-        )
-        
-        # Сохранение отчета
-        with open('reports/conversion_final_report.json', 'w') as f:
-            json.dump(final_report, f, indent=2)
-        
-        print("\n" + "="*50)
-        print("CONVERSION PIPELINE COMPLETED SUCCESSFULLY")
-        print("="*50)
-        
-        return final_report
+    parser = argparse.ArgumentParser(description='Convert PyTorch model to ONNX')
+    parser.add_argument('--model_path', type=str, default='models/credit_scoring.pth',
+                       help='Path to PyTorch model')
+    parser.add_argument('--input_size', type=int, default=20,
+                       help='Input size for the model')
+    parser.add_argument('--output_path', type=str, default=None,
+                       help='Output path for ONNX model')
+    
+    args = parser.parse_args()
+    
+    # Конвертация
+    converter = ModelConverter(args.model_path, args.input_size)
+    onnx_path = converter.convert_to_onnx(args.output_path)
+    
+    # Валидация
+    validation_results = converter.validate_conversion(onnx_path)
+    
+    # Бенчмаркинг
+    benchmark_results = converter.benchmark_performance(onnx_path)
+    
+    print(f"\n{'='*50}")
+    print("CONVERSION SUMMARY:")
+    print(f"{'='*50}")
+    print(f"✅ ONNX model saved: {onnx_path}")
+    print(f"✅ Validation MAE: {validation_results['mae']:.6f}")
+    print(f"✅ Conversion valid: {validation_results['conversion_valid']}")
+    
+    # Показать сравнение производительности для batch_size=32
+    if 32 in benchmark_results['comparison']:
+        comp = benchmark_results['comparison'][32]
+        print(f"📊 Performance comparison (batch_size=32):")
+        print(f"   PyTorch throughput: {comp['pt_throughput']:.1f} RPS")
+        print(f"   ONNX throughput: {comp['onnx_throughput']:.1f} RPS")
+        print(f"   Speedup: {comp['speedup']:.2f}x")
 
 if __name__ == "__main__":
-    converter = ModelConverter()
-    report = converter.run_full_pipeline()
+    main()

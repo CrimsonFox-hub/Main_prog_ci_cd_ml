@@ -415,10 +415,6 @@ class ResourceBenchmark:
     
     def print_summary(self, results: Dict):
         """Вывод сводки результатов"""
-        print("\n" + "=" * 60)
-        print("СВОДКА РЕЗУЛЬТАТОВ БЕНЧМАРКА")
-        print("=" * 60)
-        
         # CPU
         if 'cpu' in results:
             cpu = results['cpu']
@@ -503,6 +499,5 @@ if __name__ == "__main__":
     import platform
     import os
     
-    # Добавляем импорты в глобальную область
     if __name__ == "__main__":
         main()

@@ -1,6 +1,5 @@
 """
 Нагрузочное тестирование API
-Этап 1: Определение оптимальной конфигурации ресурсов
 """
 import time
 import threading
@@ -61,7 +60,7 @@ class LoadTester:
             error = str(e)
         
         end_time = time.time()
-        latency = (end_time - start_time) * 1000  # мс
+        latency = (end_time - start_time) * 1000
         
         return {
             'request_id': request_id,
@@ -83,34 +82,28 @@ class LoadTester:
         with ThreadPoolExecutor(max_workers=concurrent_users) as executor:
             futures = []
             
-            # Если указана скорость запросов
             if request_rate:
                 requests_per_second = request_rate
                 interval = 1.0 / requests_per_second
             else:
-                # Максимальная нагрузка
                 interval = 0
             
             pbar = tqdm(total=duration_sec, desc="Прогресс теста")
             
             while time.time() - start_time < duration_sec:
-                # Отправляем запросы
                 for _ in range(concurrent_users):
                     future = executor.submit(self.make_request, request_id)
                     futures.append(future)
                     request_id += 1
                 
-                # Ждем интервал если задана скорость
                 if interval > 0:
                     time.sleep(interval)
                 
-                # Обновляем прогресс
                 elapsed = time.time() - start_time
                 pbar.update(int(elapsed) - pbar.n)
             
             pbar.close()
-            
-            # Собираем результаты
+
             for future in as_completed(futures):
                 self.results.append(future.result())
         
@@ -173,19 +166,14 @@ class LoadTester:
 
 def run_load_test_scenarios(args):
     """Запуск нескольких сценариев нагрузочного тестирования"""
-    print("=" * 60)
-    print("НАГРУЗОЧНОЕ ТЕСТИРОВАНИЕ API")
-    print("=" * 60)
-    
     tester = LoadTester(args.base_url, args.endpoint)
     all_results = []
-    
-    # Различные сценарии нагрузки
+
     scenarios = [
-        {'users': 10, 'duration': 30, 'rate': 50},   # Низкая нагрузка
-        {'users': 50, 'duration': 60, 'rate': 100},  # Средняя нагрузка
-        {'users': 100, 'duration': 90, 'rate': 200}, # Высокая нагрузка
-        {'users': 200, 'duration': 120, 'rate': 500}, # Пиковая нагрузка
+        {'users': 10, 'duration': 30, 'rate': 50},
+        {'users': 50, 'duration': 60, 'rate': 100},
+        {'users': 100, 'duration': 90, 'rate': 200},
+        {'users': 200, 'duration': 120, 'rate': 500},
     ]
     
     for scenario in scenarios:
@@ -208,13 +196,7 @@ def run_load_test_scenarios(args):
     
     # Анализ всех результатов
     if all_results:
-        print("\n" + "=" * 60)
-        print("СВОДНЫЙ АНАЛИЗ РЕЗУЛЬТАТОВ")
-        print("=" * 60)
-        
         df_results = pd.DataFrame(all_results)
-        
-        # Определение оптимальной конфигурации
         optimal_idx = df_results[
             (df_results['success_rate'] > 0.95) & 
             (df_results['latency_p95_ms'] < 500)
@@ -228,22 +210,15 @@ def run_load_test_scenarios(args):
             print(f"  Задержка P95: {optimal['latency_p95_ms']:.1f} мс")
             print(f"  Успешность: {optimal['success_rate']:.1%}")
         
-        # Сохранение результатов
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # Сохраняем подробные результаты
         detailed_path = output_dir / f"load_test_detailed_{timestamp}.json"
         with open(detailed_path, 'w') as f:
             json.dump(all_results, f, indent=2)
-        
-        # Сохраняем сводный отчет
+
         summary_path = output_dir / f"load_test_summary_{timestamp}.csv"
         df_results.to_csv(summary_path, index=False)
-        
-        # Сохраняем рекомендации
         recommendations = {
             'optimal_configuration': optimal.to_dict() if not pd.isna(optimal_idx) else {},
             'max_safe_load': df_results[df_results['success_rate'] > 0.95]['throughput_rps'].max(),

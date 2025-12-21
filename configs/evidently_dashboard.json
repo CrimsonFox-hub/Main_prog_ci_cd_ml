@@ -1,0 +1,41 @@
+{
+    "column_mapping": {
+      "target": "default",
+      "prediction": "prediction",
+      "numerical_features": ["duration", "credit_amount", "age", "installment_commitment"],
+      "categorical_features": ["checking_status", "credit_history", "purpose"],
+      "task": "classification"
+    },
+    "dashboard_tabs": [
+      {
+        "name": "Data Drift",
+        "metrics": ["DatasetDriftMetric", "DatasetMissingValuesMetric", "ColumnDriftMetric"],
+        "options": {
+          "drift_share_threshold": 0.5,
+          "confidence_level": 0.95
+        }
+      },
+      {
+        "name": "Classification Performance",
+        "metrics": ["ClassificationQualityMetric", "ClassificationClassBalance", "ConfusionMatrix"],
+        "options": {
+          "threshold": 0.5
+        }
+      }
+    ],
+    "scheduling": {
+      "check_interval_hours": 24,
+      "window_size": 1000,
+      "min_reference_size": 10000
+    },
+    "integrations": {
+      "mlflow": {
+        "tracking_uri": "${MLFLOW_TRACKING_URI}",
+        "experiment_name": "credit-scoring-drift"
+      },
+      "slack": {
+        "webhook_url": "${SLACK_WEBHOOK_URL}",
+        "alert_levels": ["WARNING", "CRITICAL"]
+      }
+    }
+  }

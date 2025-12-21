@@ -1,0 +1,30 @@
+﻿global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: "credit-scoring"
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: "prometheus"
+
+  - job_name: "api"
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    labels:
+      service: "api"
+      environment: "development"
+
+  - job_name: "mlflow"
+    static_configs:
+      - targets: ["mlflow:5000"]
+    metrics_path: "/metrics"
+    labels:
+      service: "mlflow"
+      environment: "development"

@@ -246,7 +246,7 @@ class ConfigLoader:
     
     def get_model_config(self) -> ModelConfig:
         """Получение конфигурации модели"""
-        model_config = self.get('model')
+        model_config = self.get('model_training.yaml')
         
         return ModelConfig.from_dict(model_config)
     

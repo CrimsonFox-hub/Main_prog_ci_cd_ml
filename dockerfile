@@ -1,12 +1,12 @@
 #Многостадийный Dockerfile с DVC
 
 # Build stage
-FROM python:3.9-slim as builder
+FROM python:3.11 as builder
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 # DVC stage
-FROM python:3.9-slim as dvc
+FROM python:3.11 as dvc
 WORKDIR /app
 COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
@@ -15,7 +15,7 @@ RUN pip install dvc[s3]
 COPY . .
 RUN dvc pull -R
 # Final stage
-FROM python:3.9-slim
+FROM python:3.11
 WORKDIR /app
 COPY --from=builder /root/.local /root/.local
 COPY --from=dvc /app/models ./models

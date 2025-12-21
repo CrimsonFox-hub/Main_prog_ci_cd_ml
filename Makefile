@@ -1,424 +1,692 @@
-# Makefile для управления проектом MLOps кредитного скоринга
-# Поддержка Windows и Linux/macOS
+# ============================================================================
+# CREDIT SCORING MLOPS SYSTEM - MAKE FILE
+# ============================================================================
 
-# Определение операционной системы
-ifeq ($(OS),Windows_NT)
-    # Windows
-    SYSTEM := Windows
-    VENV_ACTIVATE := . venv\\Scripts\\activate
-    VENV_PYTHON := venv\\Scripts\\python
-    VENV_PIP := venv\\Scripts\\pip
-    RM := del /Q /S
-    MKDIR := mkdir
-    CP := copy
-    SHELL := cmd
-else
-    # Linux/macOS
-    SYSTEM := $(shell uname -s)
-    VENV_ACTIVATE := . venv/bin/activate
-    VENV_PYTHON := venv/bin/python
-    VENV_PIP := venv/bin/pip
-    RM := rm -rf
-    MKDIR := mkdir -p
-    CP := cp
+# Конфигурация проекта
+PROJECT_NAME := credit-scoring-mlops
+VERSION := 2.0.0
+ENVIRONMENT ?= local
+
+# Цвета для вывода
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+BLUE := \033[0;34m
+MAGENTA := \033[0;35m
+CYAN := \033[0;36m
+WHITE := \033[1;37m
+NC := \033[0m # No Color
+
+# Пути к Docker файлам
+DOCKER_API := docker/api/Dockerfile
+DOCKER_TRAINING := docker/training/Dockerfile
+DOCKER_MLFLOW := docker/mlflow/Dockerfile
+DOCKER_MONITORING := docker/monitoring/Dockerfile
+
+# Имена Docker образов
+IMAGE_API := $(PROJECT_NAME)-api:$(VERSION)
+IMAGE_TRAINING := $(PROJECT_NAME)-training:$(VERSION)
+IMAGE_MLFLOW := $(PROJECT_NAME)-mlflow:$(VERSION)
+IMAGE_MONITORING := $(PROJECT_NAME)-monitoring:$(VERSION)
+
+# Конфигурации для разных сред
+ifeq ($(ENVIRONMENT), local)
+	DOCKER_REGISTRY := localhost:5000
+	DOCKER_COMPOSE_FILE := docker-compose.local.yml
+else ifeq ($(ENVIRONMENT), staging)
+	DOCKER_REGISTRY := cr.yandex.cloud/$(YC_REGISTRY_ID)
+	DOCKER_COMPOSE_FILE := docker-compose.staging.yml
+else ifeq ($(ENVIRONMENT), production)
+	DOCKER_REGISTRY := cr.yandex.cloud/$(YC_REGISTRY_ID)
+	DOCKER_COMPOSE_FILE := docker-compose.prod.yml
 endif
 
-# Цели по умолчанию
-.DEFAULT_GOAL := help
+# Kubernetes конфигурация
+K8S_NAMESPACE := credit-scoring
+K8S_CONTEXT := yc-$(K8S_NAMESPACE)
+K8S_DIR := k8s/manifests
 
-# Цели по умолчанию
-help:
-	@echo "MLOps Credit Scoring Project"
-	@echo ""
-	@echo "Основные команды:"
-	@echo "  make init               - Инициализация проекта"
-	@echo "  make install            - Установка зависимостей"
-	@echo "  make test               - Запуск всех тестов"
-	@echo "  make lint               - Проверка кода"
-	@echo "  make format             - Форматирование кода"
-	@echo "  make clean              - Очистка проекта"
-	@echo ""
-	@echo "Разработка:"
-	@echo "  make up                 - Запуск всех сервисов"
-	@echo "  make down               - Остановка всех сервисов"
-	@echo "  make logs               - Просмотр логов"
-	@echo "  make monitor            - Открыть мониторинг"
-	@echo ""
-	@echo "Модели:"
-	@echo "  make train              - Обучение модели"
-	@echo "  make retrain            - Переобучение модели"
-	@echo "  make benchmark          - Бенчмаркинг модели"
-	@echo ""
-	@echo "Инфраструктура:"
-	@echo "  make infra-apply        - Развертывание инфраструктуры"
-	@echo "  make infra-destroy      - Удаление инфраструктуры"
-	@echo "  make deploy-staging     - Развертывание в staging"
-	@echo "  make deploy-production  - Развертывание в production"
-	@echo ""
-	@echo "Данные:"
-	@echo "  make data-download      - Загрузка данных"
-	@echo "  make data-process       - Обработка данных"
-	@echo "  make dvc-push           - Сохранение данных в DVC"
+# Terraform конфигурация
+TF_DIR := terraform
+TF_STATE := terraform.tfstate
+TF_VARS := terraform.tfvars
 
-# Инициализация проекта
-init:
-	@echo "Инициализация проекта..."
-	python -m venv venv
-	@echo "Виртуальное окружение создано"
+# Директории
+DATA_DIR := data
+MODELS_DIR := models
+REPORTS_DIR := reports
+LOGS_DIR := logs
+MLRUNS_DIR := mlruns
+
+# Python
+PYTHON := python3
+PIP := pip3
+PYTEST := pytest
+
+# ============================================================================
+# ПОМОЩЬ И ИНФОРМАЦИЯ
+# ============================================================================
+
+.PHONY: help info version
+
+help: ## Показать эту справку
+	@echo "$(CYAN)╔════════════════════════════════════════════════════════════════════════╗$(NC)"
+	@echo "$(CYAN)║           CREDIT SCORING MLOPS SYSTEM - СИСТЕМА УПРАВЛЕНИЯ            ║$(NC)"
+	@echo "$(CYAN)╚════════════════════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
-	@echo "=== Инструкция ==="
-	@echo "1. Активируйте виртуальное окружение:"
-ifeq ($(SYSTEM),Windows)
-	@echo "   venv\Scripts\activate"
-else
-	@echo "   source venv/bin/activate"
-endif
-	@echo "2. Обновите pip:"
-	@echo "   python -m pip install --upgrade pip"
-	@echo "3. Установите зависимости:"
-	@echo "   pip install -r requirements.txt"
-	@echo "   pip install -r requirements-dev.txt"
-	@echo "4. Установите pre-commit:"
-	@echo "   pre-commit install"
-	@echo "5. Инициализируйте DVC:"
-	@echo "   dvc init"
+	@echo "$(YELLOW)Использование:$(NC)"
+	@echo "  make [цель] ENVIRONMENT=[local|staging|production]"
+	@echo ""
+	@echo "$(YELLOW)Основные цели:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-25s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)Примеры:$(NC)"
+	@echo "  make build-all ENVIRONMENT=local      # Собрать все образы для локальной среды"
+	@echo "  make deploy-local                     # Локальное развертывание"
+	@echo "  make deploy-yc                        # Развертывание в Yandex Cloud"
+	@echo "  make train                            # Обучение модели"
 	@echo ""
 
-# Установка зависимостей
-install:
-	@echo "Установка зависимостей..."
-	$(VENV_PIP) install -r requirements.txt
-	$(VENV_PIP) install -r requirements-dev.txt
+info: ## Информация о текущей конфигурации
+	@echo "$(YELLOW)Конфигурация проекта:$(NC)"
+	@echo "  Проект:          $(PROJECT_NAME) v$(VERSION)"
+	@echo "  Среда:           $(ENVIRONMENT)"
+	@echo "  Docker Registry: $(DOCKER_REGISTRY)"
+	@echo "  Kubernetes:      $(K8S_NAMESPACE) ($(K8S_CONTEXT))"
+	@echo ""
+	@echo "$(YELLOW)Docker образы:$(NC)"
+	@echo "  API:          $(IMAGE_API)"
+	@echo "  Training:     $(IMAGE_TRAINING)"
+	@echo "  MLflow:       $(IMAGE_MLFLOW)"
+	@echo "  Monitoring:   $(IMAGE_MONITORING)"
+	@echo ""
+	@echo "$(YELLOW)Директории:$(NC)"
+	@echo "  Terraform:    $(TF_DIR)"
+	@echo "  Kubernetes:   $(K8S_DIR)"
+	@echo "  Модели:       $(MODELS_DIR)"
+	@echo "  Данные:       $(DATA_DIR)"
+
+version: ## Показать версию системы
+	@echo "$(PROJECT_NAME) v$(VERSION)"
 
 
-install-onnx:
-	@echo "Установка зависимостей для ONNX..."
-	$(VENV_PIP) install onnx onnxruntime onnxscript
-	$(VENV_PIP) install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Yandex Cloud Deploy
+yc-setup:
+	@echo "Установка yc CLI..."
+	curl https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
 
-# Обновите правило train:
-train:
-	@echo "Обучение нейронной сети..."
-	$(VENV_PYTHON) src/ml_pipeline/training/train_model.py --config configs/training_config.yaml --skip-optimization
-# Тестирование
-test:
-	@echo "Запуск тестов..."
-	$(VENV_PYTHON) -m pytest tests/unit/ -v --cov=src --cov-report=html --cov-report=term-missing
-	$(VENV_PYTHON) -m pytest tests/integration/ -v
-	$(VENV_PYTHON) -m pytest tests/e2e/ -v
+yc-auth:
+	@echo "Аутентификация в Yandex Cloud..."
+	yc init
 
-test-unit:
-	@echo "Запуск модульных тестов..."
-	$(VENV_PYTHON) -m pytest tests/unit/ -v
+yc-deploy:
+	@echo "Деплой в Yandex Cloud..."
+	chmod +x scripts/yandex-cloud/deploy-vm.sh
+	./scripts/yandex-cloud/deploy-vm.sh
 
-test-integration:
-	@echo "Запуск интеграционных тестов..."
-	$(VENV_PYTHON) -m pytest tests/integration/ -v
+yc-destroy:
+	@echo "Удаление ресурсов Yandex Cloud..."
+	yc compute instance delete mlops-credit-scoring
 
-test-load:
-	@echo "Запуск нагрузочного тестов..."
-ifeq ($(SYSTEM),Windows)
-	@echo "Для Windows используйте:"
-	@echo "locust -f tests/load/locustfile.py --headless -u 100 -r 10 -t 5m --html=reports/load_test.html"
-else
-	locust -f tests/load/locustfile.py --headless -u 100 -r 10 -t 5m --html=reports/load_test.html
-endif
+yc-status:
+	@echo "Статус VM в Yandex Cloud..."
+	yc compute instance list
 
-# Проверка кода
-lint:
-	@echo "Проверка кода..."
-	$(VENV_PYTHON) -m flake8 src/ tests/ --max-line-length=100 --exclude=__pycache__
-	$(VENV_PYTHON) -m mypy src/ --ignore-missing-imports
-	$(VENV_PYTHON) -m bandit -r src/ -x tests/
-	$(VENV_PYTHON) -m safety check -r requirements.txt
+# Общие команды
+fix-imports:
+	@echo "Создание недостающих файлов..."
+	python scripts/create_missing_files.py
 
-format:
-	@echo "Форматирование кода..."
-	$(VENV_PYTHON) -m black src/ tests/ --line-length=100
-	$(VENV_PYTHON) -m isort src/ tests/
+test-local:
+	@echo "Тестирование локального запуска..."
+	docker-compose down
+	docker-compose build
+	docker-compose up -d
 
-# Очистка
-clean:
-	@echo "Очистка проекта..."
-ifeq ($(SYSTEM),Windows)
-	@echo "Удаление файлов .pyc..."
-	powershell "Get-ChildItem -Path . -Include *.pyc -Recurse | Remove-Item -Force"
-	@echo "Удаление __pycache__..."
-	powershell "Get-ChildItem -Path . -Include __pycache__ -Recurse -Directory | Remove-Item -Force -Recurse"
-	@echo "Удаление .pytest_cache..."
-	if exist .pytest_cache rmdir /s /q .pytest_cache
-	@echo "Удаление .coverage..."
-	if exist .coverage del /q .coverage
-	@echo "Удаление htmlcov..."
-	if exist htmlcov rmdir /s /q htmlcov
-	@echo "Удаление .egg-info..."
-	powershell "Get-ChildItem -Path . -Include *.egg-info -Recurse -Directory | Remove-Item -Force -Recurse"
-	@echo "Удаление .mypy_cache..."
-	if exist .mypy_cache rmdir /s /q .mypy_cache
-	@echo "Удаление build, dist, .eggs..."
-	if exist build rmdir /s /q build
-	if exist dist rmdir /s /q dist
-	if exist .eggs rmdir /s /q .eggs
-else
+	curl http://localhost:8000/health
+
+deploy-all: fix-imports test-local yc-deploy
+	@echo "Полный деплой завершен!"
+
+.PHONY: yc-setup yc-auth yc-deploy yc-destroy yc-status fix-imports test-local deploy-all
+# ============================================================================
+# УСТАНОВКА И НАСТРОЙКА
+# ============================================================================
+
+.PHONY: init setup check-deps check-docker check-k8s check-yc
+
+init: ## Инициализация проекта (создание директорий)
+	@echo "$(GREEN)Инициализация проекта...$(NC)"
+	@mkdir -p $(DATA_DIR)/{raw,processed,external}
+	@mkdir -p $(MODELS_DIR)/{processed,deployed}
+	@mkdir -p $(REPORTS_DIR)/{benchmarks,drift,performance}
+	@mkdir -p $(LOGS_DIR)/{api,training,inference}
+	@mkdir -p $(MLRUNS_DIR)
+	@mkdir -p $(K8S_DIR)/{configs,secrets,deployments,services,ingress}
+	@echo "$(GREEN)✓ Директории созданы$(NC)"
+
+setup: check-deps ## Установка Python зависимостей
+	@echo "$(GREEN)Установка зависимостей...$(NC)"
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
+	@echo "$(GREEN)✓ Зависимости установлены$(NC)"
+
+check-deps: ## Проверка зависимостей
+	@echo "$(GREEN)Проверка зависимостей...$(NC)"
+	@which $(PYTHON) >/dev/null || (echo "$(RED)❌ Python3 не установлен$(NC)" && exit 1)
+	@which $(PIP) >/dev/null || (echo "$(RED)❌ pip3 не установлен$(NC)" && exit 1)
+	@which docker >/dev/null || (echo "$(YELLOW)⚠️  Docker не установлен$(NC)")
+	@which docker-compose >/dev/null || (echo "$(YELLOW)⚠️  Docker Compose не установлен$(NC)")
+	@echo "$(GREEN)✓ Зависимости проверены$(NC)"
+
+check-docker: ## Проверка Docker
+	@echo "$(GREEN)Проверка Docker...$(NC)"
+	@docker --version || (echo "$(RED)❌ Docker не установлен или не запущен$(NC)" && exit 1)
+	@docker-compose --version || (echo "$(RED)❌ Docker Compose не установлен$(NC)" && exit 1)
+	@echo "$(GREEN)✓ Docker проверен$(NC)"
+
+check-k8s: ## Проверка Kubernetes
+	@echo "$(GREEN)Проверка Kubernetes...$(NC)"
+	@which kubectl >/dev/null || (echo "$(RED)❌ kubectl не установлен$(NC)" && exit 1)
+	@kubectl version --client >/dev/null || (echo "$(RED)❌ kubectl не настроен$(NC)" && exit 1)
+	@echo "$(GREEN)✓ Kubernetes проверен$(NC)"
+
+check-yc: ## Проверка Yandex Cloud CLI
+	@echo "$(GREEN)Проверка Yandex Cloud...$(NC)"
+	@which yc >/dev/null || (echo "$(RED)❌ Yandex Cloud CLI не установлен$(NC)" && exit 1)
+	@yc config list >/dev/null || (echo "$(RED)❌ Yandex Cloud не настроен$(NC)" && exit 1)
+	@echo "$(GREEN)✓ Yandex Cloud проверен$(NC)"
+
+# ============================================================================
+# DOCKER СБОРКА
+# ============================================================================
+
+.PHONY: build build-api build-training build-mlflow build-monitoring build-all
+
+build-api: check-docker ## Сборка API образа
+	@echo "$(GREEN)Сборка API образа...$(NC)"
+	docker build -f $(DOCKER_API) -t $(IMAGE_API) .
+	@echo "$(GREEN)✓ API образ собран: $(IMAGE_API)$(NC)"
+
+build-training: check-docker ## Сборка Training образа
+	@echo "$(GREEN)Сборка Training образа...$(NC)"
+	docker build -f $(DOCKER_TRAINING) -t $(IMAGE_TRAINING) .
+	@echo "$(GREEN)✓ Training образ собран: $(IMAGE_TRAINING)$(NC)"
+
+build-mlflow: check-docker ## Сборка MLflow образа
+	@echo "$(GREEN)Сборка MLflow образа...$(NC)"
+	docker build -f $(DOCKER_MLFLOW) -t $(IMAGE_MLFLOW) .
+	@echo "$(GREEN)✓ MLflow образ собран: $(IMAGE_MLFLOW)$(NC)"
+
+build-monitoring: check-docker ## Сборка Monitoring образа
+	@echo "$(GREEN)Сборка Monitoring образа...$(NC)"
+	docker build -f $(DOCKER_MONITORING) -t $(IMAGE_MONITORING) .
+	@echo "$(GREEN)✓ Monitoring образ собран: $(IMAGE_MONITORING)$(NC)"
+
+build-all: build-api build-training build-mlflow build-monitoring ## Сборка всех образов
+	@echo "$(GREEN)✓ Все Docker образы собраны$(NC)"
+
+# ============================================================================
+# ЛОКАЛЬНОЕ РАЗВЕРТЫВАНИЕ
+# ============================================================================
+
+.PHONY: local-up local-down local-logs local-status local-restart
+
+local-up: build-all check-docker ## Локальный запуск (Docker Compose)
+	@echo "$(GREEN)Запуск локального окружения...$(NC)"
+	docker-compose -f docker-compose.local.yml up -d
+	@echo "$(GREEN)✓ Локальное окружение запущено$(NC)"
+	@echo ""
+	@echo "$(CYAN)СЕРВИСЫ ДОСТУПНЫ:$(NC)"
+	@echo "  API:          http://localhost:8000"
+	@echo "  API Docs:     http://localhost:8000/api/docs"
+	@echo "  MLflow:       http://localhost:5000"
+	@echo "  MinIO:        http://localhost:9001"
+	@echo "  Grafana:      http://localhost:3000"
+	@echo "  Prometheus:   http://localhost:9090"
+	@echo "  Loki:         http://localhost:3100"
+	@echo ""
+	@echo "Для остановки выполните: $(YELLOW)make local-down$(NC)"
+
+local-down: ## Остановка локального окружения
+	@echo "$(YELLOW)Остановка локального окружения...$(NC)"
+	docker-compose -f docker-compose.local.yml down
+	@echo "$(GREEN)✓ Локальное окружение остановлено$(NC)"
+
+local-logs: ## Просмотр логов локального окружения
+	@echo "$(GREEN)Просмотр логов...$(NC)"
+	docker-compose -f docker-compose.local.yml logs -f
+
+local-status: ## Статус локальных контейнеров
+	@echo "$(GREEN)Статус контейнеров:$(NC)"
+	docker-compose -f docker-compose.local.yml ps
+
+local-restart: local-down local-up ## Перезапуск локального окружения
+
+# ============================================================================
+# ML ПАЙПЛАЙН
+# ============================================================================
+
+.PHONY: train convert optimize benchmark pipeline retrain
+
+train: ## Обучение нейронной сети
+	@echo "$(GREEN)Обучение нейронной сети...$(NC)"
+	$(PYTHON) main_pipeline.py --mode train --config configs/training_config.yaml
+	@echo "$(GREEN)✓ Модель обучена$(NC)"
+
+convert: ## Конвертация модели в ONNX
+	@echo "$(GREEN)Конвертация модели в ONNX...$(NC)"
+	$(PYTHON) src/ml_pipeline/training/onnx_conversion.py \
+		--model-path $(MODELS_DIR)/credit_scoring.pth \
+		--input-size 20 \
+		--output-path $(MODELS_DIR)/credit_scoring.onnx
+	@echo "$(GREEN)✓ Модель сконвертирована в ONNX$(NC)"
+
+optimize: ## Оптимизация модели (Quantization + Pruning)
+	@echo "$(GREEN)Оптимизация модели...$(NC)"
+	$(PYTHON) src/ml_pipeline/optimization/model_optimizer.py \
+		--model-path $(MODELS_DIR)/credit_scoring.onnx \
+		--input-size 20 \
+		--quantize \
+		--prune \
+		--output-path $(MODELS_DIR)/credit_scoring_optimized.onnx
+	@echo "$(GREEN)✓ Модель оптимизирована$(NC)"
+
+benchmark: ## Бенчмаркинг моделей
+	@echo "$(GREEN)Запуск бенчмарка моделей...$(NC)"
+	$(PYTHON) src/ml_pipeline/optimization/benchmark.py \
+		--models $(MODELS_DIR)/credit_scoring.onnx $(MODELS_DIR)/credit_scoring_optimized.onnx \
+		--output $(REPORTS_DIR)/benchmarks/benchmark_results.json
+	@echo "$(GREEN)✓ Бенчмарк завершен$(NC)"
+
+pipeline: train convert optimize benchmark ## Полный ML пайплайн
+	@echo "$(GREEN)✓ Полный ML пайплайн выполнен$(NC)"
+
+retrain: ## Переобучение модели (Airflow DAG)
+	@echo "$(GREEN)Запуск переобучения модели...$(NC)"
+	docker exec -it airflow-worker airflow dags trigger credit_scoring_retraining_pipeline
+	@echo "$(GREEN)✓ Переобучение запущено$(NC)"
+
+# ============================================================================
+# ТЕСТИРОВАНИЕ И ВАЛИДАЦИЯ
+# ============================================================================
+
+.PHONY: test test-unit test-integration test-api test-model validate
+
+test: ## Запуск всех тестов
+	@echo "$(GREEN)Запуск всех тестов...$(NC)"
+	$(PYTEST) tests/ -v
+
+test-unit: ## Юнит-тесты
+	@echo "$(GREEN)Юнит-тесты...$(NC)"
+	$(PYTEST) tests/unit/ -v
+
+test-integration: ## Интеграционные тесты
+	@echo "$(GREEN)Интеграционные тесты...$(NC)"
+	$(PYTEST) tests/integration/ -v
+
+test-api: ## Тестирование API
+	@echo "$(GREEN)Тестирование API...$(NC)"
+	$(PYTEST) tests/api/ -v
+
+test-model: ## Тестирование модели
+	@echo "$(GREEN)Тестирование модели...$(NC)"
+	$(PYTHON) scripts/test_model.py \
+		--model $(MODELS_DIR)/credit_scoring.onnx \
+		--test-data $(DATA_DIR)/processed/test.csv
+
+validate: ## Валидация пайплайна
+	@echo "$(GREEN)Валидация пайплайна...$(NC)"
+	$(PYTHON) scripts/validate_pipeline.py --config configs/validation_config.yaml
+
+# ============================================================================
+# НАГРУЗОЧНОЕ ТЕСТИРОВАНИЕ
+# ============================================================================
+
+.PHONY: load-test stress-test performance-test
+
+load-test: ## Нагрузочное тестирование API
+	@echo "$(GREEN)Нагрузочное тестирование API...$(NC)"
+	$(PYTHON) scripts/load_test.py \
+		--url http://localhost:8000/api/v1/predict \
+		--rate 100 \
+		--duration 60 \
+		--output $(REPORTS_DIR)/performance/load_test.json
+
+stress-test: ## Стресс-тестирование
+	@echo "$(GREEN)Стресс-тестирование...$(NC)"
+	$(PYTHON) scripts/stress_test.py \
+		--model $(MODELS_DIR)/credit_scoring.onnx \
+		--duration 300 \
+		--concurrency 50
+
+performance-test: load-test stress-test ## Все тесты производительности
+
+# ============================================================================
+# МОНИТОРИНГ И OBSERVABILITY
+# ============================================================================
+
+.PHONY: monitor monitor-drift monitor-metrics monitor-logs dashboard
+
+monitor: ## Запуск мониторинга
+	@echo "$(GREEN)Запуск системы мониторинга...$(NC)"
+	docker-compose -f docker-compose.monitoring.yml up -d
+	@echo "$(GREEN)✓ Мониторинг запущен$(NC)"
+
+monitor-drift: ## Мониторинг дрифта данных
+	@echo "$(GREEN)Мониторинг дрифта данных...$(NC)"
+	$(PYTHON) src/ml_pipeline/monitoring/drift_detection.py \
+		--config configs/monitoring_config.yaml \
+		--hours 24 \
+		--output $(REPORTS_DIR)/drift/drift_report.html
+
+monitor-metrics: ## Просмотр метрик
+	@echo "$(GREEN)Метрики системы:$(NC)"
+	@curl -s http://localhost:8000/api/v1/system/metrics | python -m json.tool
+
+monitor-logs: ## Просмотр логов
+	@echo "$(GREEN)Просмотр логов...$(NC)"
+	docker-compose -f docker-compose.local.yml logs --tail=100
+
+dashboard: ## Генерация дашбордов
+	@echo "$(GREEN)Генерация дашбордов...$(NC)"
+	$(PYTHON) src/ml_pipeline/monitoring/evidently_dashboard.py \
+		--generate \
+		--output $(REPORTS_DIR)/dashboards/evidently_dashboard.html
+	@echo "$(GREEN)✓ Дашборды сгенерированы$(NC)"
+
+# ============================================================================
+## TERRAFORM (YANDEX CLOUD)
+# ============================================================================
+
+.PHONY: tf-init tf-plan tf-apply tf-destroy tf-output tf-refresh
+
+tf-init: check-yc ## Инициализация Terraform
+	@echo "$(GREEN)Инициализация Terraform...$(NC)"
+	cd $(TF_DIR) && terraform init
+	@echo "$(GREEN)✓ Terraform инициализирован$(NC)"
+
+tf-plan: tf-init ## План развертывания инфраструктуры
+	@echo "$(GREEN)Генерация плана Terraform...$(NC)"
+	cd $(TF_DIR) && terraform plan -var-file=$(TF_VARS)
+	@echo "$(GREEN)✓ План сгенерирован$(NC)"
+
+tf-apply: tf-plan ## Развертывание инфраструктуры
+	@echo "$(GREEN)Развертывание инфраструктуры в Yandex Cloud...$(NC)"
+	cd $(TF_DIR) && terraform apply -var-file=$(TF_VARS) -auto-approve
+	@echo "$(GREEN)✓ Инфраструктура развернута$(NC)"
+
+tf-destroy: ## Уничтожение инфраструктуры
+	@echo "$(RED)Уничтожение инфраструктуры в Yandex Cloud...$(NC)"
+	cd $(TF_DIR) && terraform destroy -var-file=$(TF_VARS) -auto-approve
+	@echo "$(GREEN)✓ Инфраструктура уничтожена$(NC)"
+
+tf-output: ## Вывод выходных переменных Terraform
+	@echo "$(GREEN)Выходные переменные Terraform:$(NC)"
+	cd $(TF_DIR) && terraform output
+
+tf-refresh: ## Обновление состояния Terraform
+	@echo "$(GREEN)Обновление состояния Terraform...$(NC)"
+	cd $(TF_DIR) && terraform refresh -var-file=$(TF_VARS)
+
+# ============================================================================
+# KUBERNETES (YANDEX CLOUD)
+# ============================================================================
+
+.PHONY: k8s-context k8s-deploy k8s-deploy-all k8s-status k8s-logs k8s-delete
+
+k8s-context: check-k8s ## Настройка контекста Kubernetes
+	@echo "$(GREEN)Настройка контекста Kubernetes...$(NC)"
+	kubectl config use-context $(K8S_CONTEXT)
+	@echo "$(GREEN)✓ Контекст настроен: $(K8S_CONTEXT)$(NC)"
+
+k8s-deploy: k8s-context build-all ## Развертывание в Kubernetes
+	@echo "$(GREEN)Развертывание в Kubernetes...$(NC)"
+	kubectl apply -f $(K8S_DIR)/namespace.yaml
+	kubectl apply -f $(K8S_DIR)/configs/ -n $(K8S_NAMESPACE)
+	kubectl apply -f $(K8S_DIR)/secrets/ -n $(K8S_NAMESPACE)
+	kubectl apply -f $(K8S_DIR)/deployments/ -n $(K8S_NAMESPACE)
+	kubectl apply -f $(K8S_DIR)/services/ -n $(K8S_NAMESPACE)
+	kubectl apply -f $(K8S_DIR)/ingress/ -n $(K8S_NAMESPACE)
+	@echo "$(GREEN)✓ Приложение развернуто в Kubernetes$(NC)"
+
+k8s-deploy-all: tf-apply k8s-deploy ## Полное развертывание в облаке
+
+k8s-status: ## Статус Kubernetes ресурсов
+	@echo "$(GREEN)Статус Kubernetes:$(NC)"
+	@echo "$(CYAN)Поды:$(NC)"
+	kubectl get pods -n $(K8S_NAMESPACE)
+	@echo "$(CYAN)Сервисы:$(NC)"
+	kubectl get services -n $(K8S_NAMESPACE)
+	@echo "$(CYAN)Deployments:$(NC)"
+	kubectl get deployments -n $(K8S_NAMESPACE)
+	@echo "$(CYAN)Ingress:$(NC)"
+	kubectl get ingress -n $(K8S_NAMESPACE)
+
+k8s-logs: ## Просмотр логов Kubernetes
+	@echo "$(GREEN)Логи Kubernetes:$(NC)"
+	kubectl logs -n $(K8S_NAMESPACE) --selector=app=credit-scoring-api --tail=100
+
+k8s-delete: ## Удаление развертывания из Kubernetes
+	@echo "$(YELLOW)Удаление развертывания из Kubernetes...$(NC)"
+	kubectl delete -f $(K8S_DIR)/ --ignore-not-found=true -n $(K8S_NAMESPACE)
+	kubectl delete namespace $(K8S_NAMESPACE) --ignore-not-found=true
+	@echo "$(GREEN)✓ Развертывание удалено$(NC)"
+
+# ============================================================================
+# CI/CD И АВТОМАТИЗАЦИЯ
+# ============================================================================
+
+.PHONY: ci-build ci-test ci-deploy-staging ci-deploy-production
+
+ci-build: setup test build-all ## CI: Сборка и тестирование
+	@echo "$(GREEN)✓ CI: Сборка и тестирование завершены$(NC)"
+
+ci-test: test-unit test-integration test-api ## CI: Запуск всех тестов
+	@echo "$(GREEN)✓ CI: Все тесты пройдены$(NC)"
+
+ci-deploy-staging: ## CI: Деплой в staging
+	@echo "$(GREEN)CI: Деплой в staging...$(NC)"
+	ENVIRONMENT=staging $(MAKE) tf-apply
+	ENVIRONMENT=staging $(MAKE) k8s-deploy
+	@echo "$(GREEN)✓ CI: Деплой в staging завершен$(NC)"
+
+ci-deploy-production: ## CI: Деплой в production
+	@echo "$(GREEN)CI: Деплой в production...$(NC)"
+	ENVIRONMENT=production $(MAKE) tf-apply
+	ENVIRONMENT=production $(MAKE) k8s-deploy
+	@echo "$(GREEN)✓ CI: Деплой в production завершен$(NC)"
+
+# ============================================================================
+# БЕЗОПАСНОСТЬ И СКАНИРОВАНИЕ
+# ============================================================================
+
+.PHONY: security-scan vulnerability-scan secrets-check
+
+security-scan: ## Сканирование безопасности
+	@echo "$(GREEN)Сканирование безопасности...$(NC)"
+	bandit -r src/ -f html -o $(REPORTS_DIR)/security_scan.html
+	@echo "$(GREEN)✓ Сканирование безопасности завершено$(NC)"
+
+vulnerability-scan: ## Сканирование уязвимостей Docker образов
+	@echo "$(GREEN)Сканирование уязвимостей Docker образов...$(NC)"
+	trivy image $(IMAGE_API)
+	trivy image $(IMAGE_TRAINING)
+	@echo "$(GREEN)✓ Сканирование уязвимостей завершено$(NC)"
+
+secrets-check: ## Проверка на утечку секретов
+	@echo "$(GREEN)Проверка на утечку секретов...$(NC)"
+	gitleaks detect --source . --verbose
+	@echo "$(GREEN)✓ Проверка секретов завершена$(NC)"
+
+# ============================================================================
+## ОЧИСТКА
+# ============================================================================
+
+.PHONY: clean clean-models clean-data clean-docker clean-terraform clean-all
+
+clean: ## Очистка временных файлов
+	@echo "$(GREEN)Очистка временных файлов...$(NC)"
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -delete
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".coverage" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf build/ dist/ .eggs/
-endif
-	@echo "Очистка завершена"
+	find . -type d -name ".pytest_cache" -exec rm -rf {} +
+	find . -type f -name ".coverage" -delete
+	rm -rf htmlcov/
+	rm -rf .mypy_cache/
+	@echo "$(GREEN)✓ Временные файлы очищены$(NC)"
 
-# Разработка с Docker
-up:
-	@echo "Запуск сервисов..."
-	docker-compose up -d postgres redis minio mlflow
-	@echo "Ожидание инициализации сервисов..."
+clean-models: ## Очистка моделей
+	@echo "$(GREEN)Очистка моделей...$(NC)"
+	rm -rf $(MODELS_DIR)/*.pth
+	rm -rf $(MODELS_DIR)/*.onnx
+	rm -rf $(MODELS_DIR)/*.joblib
+	rm -rf $(MODELS_DIR)/deployed/*
+	@echo "$(GREEN)✓ Модели очищены$(NC)"
+
+clean-data: ## Очистка данных
+	@echo "$(GREEN)Очистка данных...$(NC)"
+	rm -rf $(DATA_DIR)/processed/*
+	@echo "$(GREEN)✓ Данные очищены$(NC)"
+
+clean-docker: ## Очистка Docker
+	@echo "$(GREEN)Очистка Docker...$(NC)"
+	docker system prune -f
+	docker volume prune -f
+	@echo "$(GREEN)✓ Docker очищен$(NC)"
+
+clean-terraform: ## Очистка Terraform
+	@echo "$(GREEN)Очистка Terraform...$(NC)"
+	rm -rf $(TF_DIR)/.terraform
+	rm -f $(TF_DIR)/$(TF_STATE)*
+	rm -f $(TF_DIR)/*.tfstate.backup
+	@echo "$(GREEN)✓ Terraform очищен$(NC)"
+
+clean-all: clean clean-models clean-data clean-docker clean-terraform local-down ## Полная очистка
+	@echo "$(GREEN)✓ Полная очистка завершена$(NC)"
+
+# ============================================================================
+## УТИЛИТЫ И ДЕМОНСТРАЦИЯ
+# ============================================================================
+
+.PHONY: demo demo-api demo-ml demo-monitoring demo-all
+
+demo-api: ## Демонстрация API
+	@echo "$(GREEN)Демонстрация API...$(NC)"
+	@echo "1. Откройте в браузере: http://localhost:8000"
+	@echo "2. Откройте Swagger UI: http://localhost:8000/api/docs"
+	@echo "3. Протестируйте эндпоинты:"
+	@echo "   - GET /health"
+	@echo "   - POST /api/v1/predict"
+	@echo "   - GET /api/v1/services"
+
+demo-ml: ## Демонстрация ML компонентов
+	@echo "$(GREEN)Демонстрация ML компонентов...$(NC)"
+	@echo "1. MLflow: http://localhost:5000"
+	@echo "2. Обучение модели: make train"
+	@echo "3. Конвертация в ONNX: make convert"
+	@echo "4. Оптимизация: make optimize"
+
+demo-monitoring: ## Демонстрация мониторинга
+	@echo "$(GREEN)Демонстрация мониторинга...$(NC)"
+	@echo "1. Grafana: http://localhost:3000 (admin/admin)"
+	@echo "2. Prometheus: http://localhost:9090"
+	@echo "3. Loki: http://localhost:3100"
+	@echo "4. Мониторинг дрифта: make monitor-drift"
+
+demo-all: demo-api demo-ml demo-monitoring ## Вся демонстрация
+
+# ============================================================================
+## ДОКУМЕНТАЦИЯ
+# ============================================================================
+
+.PHONY: docs docs-api docs-ml docs-infra
+
+docs: ## Генерация всей документации
+	@echo "$(GREEN)Генерация документации...$(NC)"
+	pdoc --html src --output-dir docs/api --force
+	@echo "$(GREEN)✓ Документация сгенерирована$(NC)"
+
+docs-api: ## Документация API
+	@echo "$(GREEN)Генерация документации API...$(NC)"
+	redoc-cli bundle openapi.yaml -o docs/api.html
+	@echo "$(GREEN)✓ Документация API сгенерирована$(NC)"
+
+docs-ml: ## Документация ML пайплайна
+	@echo "$(GREEN)Генерация ML документации...$(NC)"
+	$(PYTHON) scripts/generate_ml_docs.py --output docs/ml/
+	@echo "$(GREEN)✓ ML документация сгенерирована$(NC)"
+
+docs-infra: ## Документация инфраструктуры
+	@echo "$(GREEN)Генерация инфраструктурной документации...$(NC)"
+	terraform-docs markdown $(TF_DIR) > $(TF_DIR)/README.md
+	@echo "$(GREEN)✓ Инфраструктурная документация сгенерирована$(NC)"
+
+# ============================================
+# РАБОЧИЕ ЦЕЛИ ДЛЯ ЗАПУСКА ВСЕГО
+# ============================================
+
+create-missing:
+	@echo "Создание недостающих файлов..."
+	python scripts/create_missing_files.py
+
+health-check:
+	@echo "Проверка здоровья сервисов..."
 ifeq ($(SYSTEM),Windows)
-	timeout /t 10 /nobreak > nul 2>&1 || sleep 10
+	powershell -ExecutionPolicy Bypass -File scripts/windows/health-check.ps1
 else
-	sleep 10
+	chmod +x scripts/linux/health-check.sh
+	./scripts/linux/health-check.sh
 endif
-	docker-compose up -d api
-	@echo "Сервисы запущены"
-	@echo "API: http://localhost:8000"
-	@echo "MLflow: http://localhost:5000"
-	@echo "MinIO: http://localhost:9001"
-	@echo "Документация API: http://localhost:8000/docs"
 
-down:
-	@echo "Остановка сервисов..."
+run-local: create-missing
+	@echo "Запуск всех сервисов локально..."
 	docker-compose down
-	@echo "Сервисы остановлены"
+	docker-compose build
+	docker-compose up -d
+	@echo "Ожидание запуска сервисов..."
 
-logs:
-	@echo "Просмотр логов..."
-	docker-compose logs -f api
+	@echo "Проверка доступности..."
+	curl -f http://localhost:8000/health || echo "API пока не готов"
+	curl -f http://localhost:5000 || echo "MLflow пока не готов"
+	@echo ""
+	@echo "Сервисы запущены:"
+	@echo "  API:      http://localhost:8000"
+	@echo "  MLflow:   http://localhost:5000"
+	@echo "  MinIO:    http://localhost:9001"
+	@echo "  Grafana:  http://localhost:3000"
+	@echo ""
+	@echo "Для просмотра логов: docker-compose logs -f"
+	@echo "Для остановки:       docker-compose down"
 
-monitor:
-	@echo "Запуск мониторинга..."
-	docker-compose up -d prometheus grafana
-	@echo "Prometheus: http://localhost:9090"
-	@echo "Grafana: http://localhost:3000 (admin/admin)"
+restart-api:
+	@echo "Перезапуск API..."
+	docker-compose stop api
+	docker-compose build api
+	docker-compose up -d api
+	@echo "Проверка API..."
+	curl -f -s http://localhost:8000/health && echo "API работает" || echo "API не отвечает, проверьте логи: docker-compose logs api"
 
-# Работа с моделями
-train:
-	@echo "Обучение модели..."
-	$(VENV_PYTHON) src/ml_pipeline/training/train_model.py --config configs/training_config.yaml
-	@echo "Модель обучена. Результаты в MLflow: http://localhost:5000"
-
-retrain:
-	@echo "Переобучение модели..."
-	$(VENV_PYTHON) scripts/orchestration/trigger_retraining.py --trigger data_drift
-	@echo "Запущено переобучение. Проверьте Airflow: http://localhost:8080"
-
-benchmark:
-	@echo "Бенчмаркинг модели..."
-	$(VENV_PYTHON) src/ml_pipeline/training/onnx_conversion.py --benchmark
-	@echo "Бенчмаркинг завершен. Отчет в reports/benchmark_report.json"
-
-# Инфраструктура
-infra-init:
-	@echo "Инициализация Terraform..."
-	cd infrastructure/environments/staging && terraform init
-
-infra-apply:
-	@echo "Развертывание инфраструктуры staging..."
-	cd infrastructure/environments/staging && terraform apply -auto-approve
-	@echo "Инфраструктура staging развернута"
-
-infra-destroy:
-	@echo "Удаление инфраструктуры staging..."
-	cd infrastructure/environments/staging && terraform destroy -auto-approve
-	@echo "Инфраструктура staging удалена"
-
-# Развертывание
-deploy-staging:
-	@echo "Развертывание в staging..."
-	@echo "Для Windows настройте kubectl вручную:"
-	@echo "1. Установите kubectl"
-	@echo "2. Настройте kubeconfig"
-	@echo "3. Запустите: kubectl apply -f kubernetes/credit-scoring-api/ -n staging"
-
-# Работа с данными
-data-download:
-	@echo "Загрузка данных..."
-	$(VENV_PYTHON) scripts/data/download_data.py --source-url https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data
-	@echo "Данные загружены в data/raw/"
-
-data-process:
-	@echo "Обработка данных..."
-	$(VENV_PYTHON) scripts/data/process_data.py --input data/raw/german_credit.csv --output data/processed/ --config configs/processing_config.yaml
-	@echo "Данные обработаны и сохранены в data/processed/"
-
-dvc-push:
-	@echo "Сохранение данных в DVC..."
-	dvc add data/processed/train.csv data/processed/test.csv
-	dvc push
-	git add data/processed/.gitignore data/processed/train.csv.dvc data/processed/test.csv.dvc
-	@echo "Данные сохранены в DVC"
-
-# Сборка Docker образов
-build-api:
-	@echo "Сборка Docker образа API..."
-	docker build -t credit-scoring-api:latest -f docker/api/Dockerfile .
-	@echo "Образ собран: credit-scoring-api:latest"
-
-build-training:
-	@echo "Сборка Docker образа для обучения..."
-	docker build -t credit-scoring-training:latest -f docker/training/Dockerfile .
-	@echo "Образ собран: credit-scoring-training:latest"
-
-build-all:
-	@echo "Сборка всех Docker образов..."
-	make build-api
-	make build-training
-	docker build -t credit-scoring-monitoring:latest -f docker/monitoring/Dockerfile .
-	@echo "Все образы собраны"
-
-# CI/CD
-ci-test:
-	@echo "Запуск CI пайплайна..."
-	make lint
-	make test-unit
-	make test-integration
-	@echo "CI пайплайн завершен успешно"
-
-# Мониторинг и алерты
-monitor-drift:
-	@echo "Мониторинг дрифта..."
-	$(VENV_PYTHON) src/ml_pipeline/monitoring/drift_detection.py --hours 24
-	@echo "Мониторинг завершен. Отчет в monitoring/reports/"
-
-# Вспомогательные команды
-generate-docs:
-	@echo "Генерация документации..."
-	$(VENV_PYTHON) -m pdoc --html src --output-dir docs/api --force
-	@echo "Документация сгенерирована в docs/api/"
-
-run-notebooks:
-	@echo "Запуск Jupyter notebook..."
-	docker-compose up jupyter
-	@echo "Jupyter доступен по: http://localhost:8888"
-
-backup-models:
-	@echo "Создание backup моделей..."
-ifeq ($(SYSTEM),Windows)
-	powershell "Compress-Archive -Path models -DestinationPath models_backup_$(shell date +%Y%m%d_%H%M%S).zip"
-else
-	tar -czf models_backup_$$(date +%Y%m%d_%H%M%S).tar.gz models/
-endif
-	@echo "Backup создан"
-
-restore-models:
-	@echo "Восстановление моделей из backup..."
-ifeq ($(SYSTEM),Windows)
-	@echo "Разархивируйте backup вручную:"
-	@echo "powershell Expand-Archive -Path models_backup_*.zip -DestinationPath ."
-else
-	tar -xzf models_backup_*.tar.gz
-endif
-	@echo "Модели восстановлены"
-
-# Полный пайплайн
-full-pipeline:
-	@echo "Запуск полного пайплайна..."
-	make clean
-	make init
-	$(VENV_ACTIVATE) && make install
-	make data-download
-	make data-process
-	make train
-	make benchmark
-	make test
-	make build-all
-	@echo "Полный пайплайн завершен"
-
-# Статус сервисов
 status:
-	@echo "Статус сервисов:"
+	@echo "Статус контейнеров:"
 	docker-compose ps
 	@echo ""
-	@echo "Использование диска:"
-ifeq ($(SYSTEM),Windows)
-	powershell "Get-ChildItem -Path data,models,logs -Directory -ErrorAction SilentlyContinue | Select-Object Name, @{Name='Size(MB)';Expression={[math]::Round((Get-ChildItem $$_.FullName -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 2)}}"
-else
-	du -sh data/ models/ logs/ 2>/dev/null || true
-endif
+	@echo "Использование ресурсов:"
+	docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" | head -n 8
 
-# Создание структуры директорий
-create-structure:
-	@echo "Создание структуры проекта..."
-ifeq ($(SYSTEM),Windows)
-	@echo "Создание директорий..."
-	powershell -Command "mkdir -Force data/raw, data/processed, data/features, models/trained, models/experiments, logs, reports, monitoring/reports, monitoring/alerts, monitoring/dashboard, configs, tests/unit, tests/integration, tests/load, tests/e2e, docker/api, docker/training, docker/monitoring, kubernetes/base, kubernetes/credit-scoring-api, kubernetes/monitoring-stack, kubernetes/ml-pipelines, kubernetes/ingress, infrastructure/modules/network, infrastructure/modules/kubernetes, infrastructure/modules/storage, infrastructure/modules/monitoring, infrastructure/environments/staging, infrastructure/environments/production, scripts/deployment, scripts/monitoring, scripts/benchmarks, docs/runbooks, src/api/routes, src/api/middleware, src/ml_pipeline/training, src/ml_pipeline/inference, src/ml_pipeline/monitoring, src/utils, .github/workflows" 2>nul
-	@echo "Создание файлов..."
-	echo. > data/.gitkeep
-	echo. > models/.gitkeep
-	echo. > logs/.gitkeep
-	echo. > configs/.gitkeep
-else
-	mkdir -p data/{raw,processed,features} \
-		models/{trained,experiments,champion-challenger} \
-		logs \
-		reports \
-		monitoring/{reports,alerts,dashboard,summaries,retraining} \
-		configs \
-		tests/{unit,integration,load,e2e} \
-		docker/{api,training,monitoring,jupyter} \
-		kubernetes/{base,credit-scoring-api,monitoring-stack,ml-pipelines,ingress} \
-		infrastructure/modules/{network,kubernetes,storage,monitoring,database} \
-		infrastructure/environments/{staging,production} \
-		infrastructure/scripts/{deployment,monitoring,benchmarks} \
-		scripts/{deployment,monitoring,benchmarks,orchestration,data} \
-		docs/runbooks \
-		src/api/{routes,middleware,models} \
-		src/ml_pipeline/{training,inference,monitoring,validation,registration,deployment} \
-		src/utils \
-		.github/workflows \
-		notebooks
-	touch data/.gitkeep models/.gitkeep logs/.gitkeep configs/.gitkeep
-endif
-	@echo "Структура создана"
+clean-docker:
+	@echo "Очистка Docker..."
+	docker-compose down -v
+	docker system prune -f
+	@echo "Docker очищен"
 
-# Проверка конфигурации
-check-config:
-	@echo "Проверка конфигурации..."
-	$(VENV_PYTHON) -c "import yaml; config = yaml.safe_load(open('configs/training_config.yaml')); print('training_config keys:', list(config.keys()))"
-	@echo ""
-	$(VENV_PYTHON) -c "import pandas as pd; df = pd.read_csv('data/processed/train.csv'); print('Колонки в train.csv:', df.columns.tolist())"
+# Полный рабочий пайплайн
+full-pipeline: create-missing run-local health-check
+	@echo "Все сервисы запущены и проверены!"
 
-# Создание конфигурационных файлов
-create-configs:
-	@echo "Создание недостающих конфигурационных файлов..."
-ifeq ($(SYSTEM),Windows)
-	if not exist "configs\processing_config.yaml" \
-	( \
-		$(VENV_PYTHON) -c "import yaml; config = {'data': {'numerical_features': ['duration', 'credit_amount', 'age', 'installment_commitment', 'residence_since', 'existing_credits', 'num_dependents'], 'categorical_features': ['checking_status', 'credit_history', 'purpose', 'savings_status', 'employment', 'personal_status', 'other_parties', 'property_magnitude', 'other_payment_plans', 'housing', 'job', 'own_telephone', 'foreign_worker'], 'target_column': 'default'}, 'model': {'paths': {'scaler': 'models/processed/scaler.pkl', 'encoder': 'models/processed/encoder.pkl'}}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/processing_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)" \
-	)
-	if not exist "configs\training_config.yaml" \
-	( \
-		$(VENV_PYTHON) -c "import yaml; config = {'model_paths': {'trained': 'models/trained/model.pkl', 'onnx': 'models/trained/model.onnx', 'tensorflow': 'models/trained/model'}, 'data': {'train_path': 'data/processed/train.csv', 'test_path': 'data/processed/test.csv', 'target_column': 'default'}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/training_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)" \
-	)
-else
-	if [ ! -f "configs/processing_config.yaml" ]; then \
-		$(VENV_PYTHON) -c "import yaml; config = {'data': {'numerical_features': ['duration', 'credit_amount', 'age', 'installment_commitment', 'residence_since', 'existing_credits', 'num_dependents'], 'categorical_features': ['checking_status', 'credit_history', 'purpose', 'savings_status', 'employment', 'personal_status', 'other_parties', 'property_magnitude', 'other_payment_plans', 'housing', 'job', 'own_telephone', 'foreign_worker'], 'target_column': 'default'}, 'model': {'paths': {'scaler': 'models/processed/scaler.pkl', 'encoder': 'models/processed/encoder.pkl'}}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/processing_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)"; \
-	fi
-	if [ ! -f "configs/training_config.yaml" ]; then \
-		$(VENV_PYTHON) -c "import yaml; config = {'model_paths': {'trained': 'models/trained/model.pkl', 'onnx': 'models/trained/model.onnx', 'tensorflow': 'models/trained/model'}, 'data': {'train_path': 'data/processed/train.csv', 'test_path': 'data/processed/test.csv', 'target_column': 'default'}}; import os; os.makedirs('configs', exist_ok=True); with open('configs/training_config.yaml', 'w') as f: yaml.dump(config, f, default_flow_style=False)"; \
-	fi
-endif
-	@echo "Конфигурационные файлы созданы"
+# ============================================================================
+## КОНЕЦ ФАЙЛА
+# ============================================================================
 
-# Быстрая проверка работоспособности
-quick-test:
-	@echo "Быстрая проверка работоспособности..."
-	make data-download
-	make create-configs
-	make data-process
-	make check-config
-	@echo "Проверка завершена. Теперь можно запускать: make train"
+# Автоматическая документация целей
+.DEFAULT_GOAL := help
 
-.PHONY: help init install test test-unit test-integration test-load lint format clean up down logs monitor train retrain benchmark infra-init infra-apply infra-destroy deploy-staging data-download data-process dvc-push build-api build-training build-all ci-test monitor-drift generate-docs run-notebooks backup-models restore-models full-pipeline status create-structure check-config create-configs quick-test

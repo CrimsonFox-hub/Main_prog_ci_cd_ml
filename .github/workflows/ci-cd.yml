@@ -32,7 +32,7 @@ env:
   IMAGE_NAME: ${{ secrets.YC_REGISTRY_ID }}/credit-scoring
   K8S_NAMESPACE: ml-production
   TF_VERSION: 1.6.0
-  PYTHON_VERSION: '3.10'
+  PYTHON_VERSION: '3.11'
 
 jobs:
   lint-and-test:

@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: credit_scoring_mlflow_debug
+    command: >
+      sh -c "
+      echo 'Waiting for MinIO and PostgreSQL...'
+      sleep 10
+      mlflow server
+      --backend-store-uri postgresql://postgres:postgres@postgres/credit_scoring
+      --default-artifact-root s3://mlflow-artifacts
+      --host 0.0.0.0
+      --port 5000
+      "
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_EC2_METADATA_DISABLED: true
+      MLFLOW_S3_IGNORE_TLS: true
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ml-network
+
+networks:
+  ml-network:
+    external: true
+    name: main_prog_ci_cd_ml_ml-network

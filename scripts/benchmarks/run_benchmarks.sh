@@ -2,8 +2,6 @@
 set -e
 
 # Скрипт запуска всех бенчмарков
-# Этап 1: Комплексное тестирование производительности
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 REPORTS_DIR="${PROJECT_ROOT}/reports/benchmarks"
@@ -13,7 +11,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -32,9 +30,7 @@ mkdir -p "$REPORTS_DIR"
 mkdir -p "$REPORTS_DIR/$TIMESTAMP"
 
 print_header() {
-    echo "================================================================"
     echo "$1"
-    echo "================================================================"
 }
 
 check_prerequisites() {
@@ -61,8 +57,6 @@ check_prerequisites() {
 }
 
 run_resource_benchmark() {
-    print_header "1. БЕНЧМАРК РЕСУРСОВ СИСТЕМЫ"
-    
     log_info "Запуск тестирования ресурсов..."
     
     cd "$PROJECT_ROOT"
@@ -84,8 +78,6 @@ run_resource_benchmark() {
 }
 
 run_onnx_benchmark() {
-    print_header "2. СРАВНЕНИЕ ONNX И ОРИГИНАЛЬНОЙ МОДЕЛИ"
-    
     # Проверка наличия моделей
     MODEL_PKL="models/trained/credit_scoring_model.pkl"
     MODEL_ONNX="models/trained/credit_scoring_model.onnx"
@@ -126,8 +118,6 @@ run_onnx_benchmark() {
 }
 
 run_load_test() {
-    print_header "3. НАГРУЗОЧНОЕ ТЕСТИРОВАНИЕ"
-    
     # Проверка доступности API
     API_URL="${API_URL:-http://localhost:8000}"
     
@@ -164,8 +154,6 @@ run_load_test() {
 }
 
 run_inference_benchmark() {
-    print_header "4. БЕНЧМАРК ИНФЕРЕНСА НА РАЗНЫХ РЕСУРСАХ"
-    
     # Проверка наличия модели
     MODEL_PATH="models/trained/credit_scoring_model.onnx"
     
@@ -301,8 +289,6 @@ EOF
 }
 
 generate_summary_report() {
-    print_header "5. ГЕНЕРАЦИЯ СВОДНОГО ОТЧЕТА"
-    
     log_info "Создание сводного отчета..."
     
     cd "$PROJECT_ROOT"
@@ -425,13 +411,13 @@ generate_summary_report() {
 </head>
 <body>
     <div class="header">
-        <h1>📊 Сводный отчет бенчмарков</h1>
+        <h1> Сводный отчет бенчмарков</h1>
         <p>Дата и время: $TIMESTAMP</p>
         <p>Проект: Кредитный скоринг MLOps</p>
     </div>
 
     <div class="section">
-        <h2>📈 Обзор производительности</h2>
+        <h2> Обзор производительности</h2>
         <div class="metrics-grid">
             <div class="metric-card">
                 <div class="metric-value" id="cpu-score">Загрузка...</div>
@@ -453,7 +439,7 @@ generate_summary_report() {
     </div>
 
     <div class="section">
-        <h2>🎯 Рекомендации по конфигурации</h2>
+        <h2> Рекомендации по конфигурации</h2>
         <div class="recommendation">
             <h3>Оптимальная конфигурация для продакшена</h3>
             <div id="recommendations">Загрузка рекомендаций...</div>
@@ -461,7 +447,7 @@ generate_summary_report() {
     </div>
 
     <div class="section">
-        <h2>📋 Детальные результаты</h2>
+        <h2> Детальные результаты</h2>
         <table id="results-table">
             <thead>
                 <tr>
@@ -478,7 +464,7 @@ generate_summary_report() {
     </div>
 
     <div class="section">
-        <h2>📁 Файлы результатов</h2>
+        <h2> Файлы результатов</h2>
         <ul id="files-list">
             <!-- Заполняется JavaScript -->
         </ul>
@@ -603,7 +589,6 @@ EOF
 }
 
 main() {
-    print_header "🚀 ЗАПУСК КОМПЛЕКСНЫХ БЕНЧМАРКОВ"
     echo "Время начала: $(date)"
     echo "Директория отчетов: $REPORTS_DIR/$TIMESTAMP"
     echo ""
@@ -619,8 +604,7 @@ main() {
     
     # Генерация сводного отчета
     generate_summary_report
-    
-    print_header "✅ БЕНЧМАРКИ ЗАВЕРШЕНЫ"
+
     echo ""
     echo "Все тесты выполнены успешно!"
     echo ""

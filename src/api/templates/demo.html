@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credit Scoring Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-top: 20px;
+            padding-bottom: 50px;
+        }
+        .demo-container {
+            background: rgba(255, 255, 255, 0.97);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .result-card {
+            border-radius: 15px;
+            border: none;
+            transition: all 0.3s;
+        }
+        .result-approved {
+            border-left: 5px solid #28a745;
+        }
+        .result-rejected {
+            border-left: 5px solid #dc3545;
+        }
+        .feature-slider {
+            width: 100%;
+        }
+        .slider-value {
+            font-weight: bold;
+            color: #667eea;
+        }
+        .prediction-gauge {
+            position: relative;
+            height: 200px;
+            width: 200px;
+            margin: 0 auto;
+        }
+        .gauge-background {
+            fill: #e0e0e0;
+        }
+        .gauge-fill {
+            fill: #667eea;
+            transition: all 0.5s;
+        }
+        .gauge-text {
+            font-size: 24px;
+            font-weight: bold;
+            fill: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="demo-container">
+            <!-- Заголовок -->
+            <div class="text-center mb-5">
+                <h1 class="display-5 mb-3">
+                    <i class="fas fa-calculator me-2"></i>Демонстрация кредитного скоринга
+                </h1>
+                <p class="lead">Протестируйте нейронную сеть для оценки кредитоспособности</p>
+                <a href="/" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left me-1"></i>На главную
+                </a>
+            </div>
+            
+            <div class="row">
+                <!-- Форма ввода -->
+                <div class="col-lg-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-edit me-2"></i>Параметры заемщика
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="scoring-form">
+                                <!-- Возраст -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-user me-1"></i>Возраст
+                                        <span class="slider-value" id="age-value">30</span> лет
+                                    </label>
+                                    <input type="range" class="form-range feature-slider" 
+                                           id="age-slider" min="18" max="80" value="30"
+                                           oninput="updateSliderValue('age', this.value)">
+                                    <div class="d-flex justify-content-between">
+                                        <small>18</small>
+                                        <small>80</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- Доход -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-money-bill-wave me-1"></i>Годовой доход
+                                        <span class="slider-value" id="income-value">50,000</span> руб.
+                                    </label>
+                                    <input type="range" class="form-range feature-slider" 
+                                           id="income-slider" min="20000" max="300000" value="50000"
+                                           oninput="updateSliderValue('income', this.value)">
+                                    <div class="d-flex justify-content-between">
+                                        <small>20K</small>
+                                        <small>300K</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- Кредитный рейтинг -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-star me-1"></i>Кредитный рейтинг
+                                        <span class="slider-value" id="credit-score-value">650</span>
+                                    </label>
+                                    <input type="range" class="form-range feature-slider" 
+                                           id="credit-score-slider" min="300" max="850" value="650"
+                                           oninput="updateSliderValue('credit-score', this.value)">
+                                    <div class="d-flex justify-content-between">
+                                        <small>300</small>
+                                        <small>850</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- Сумма кредита -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-hand-holding-usd me-1"></i>Сумма кредита
+                                        <span class="slider-value" id="loan-amount-value">10,000</span> руб.
+                                    </label>
+                                    <input type="range" class="form-range feature-slider" 
+                                           id="loan-amount-slider" min="1000" max="100000" value="10000"
+                                           oninput="updateSliderValue('loan-amount', this.value)">
+                                    <div class="d-flex justify-content-between">
+                                        <small>1K</small>
+                                        <small>100K</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- Стаж работы -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-briefcase me-1"></i>Стаж работы
+                                        <span class="slider-value" id="employment-years-value">5</span> лет
+                                    </label>
+                                    <input type="range" class="form-range feature-slider" 
+                                           id="employment-years-slider" min="0" max="40" value="5"
+                                           oninput="updateSliderValue('employment-years', this.value)">
+                                    <div class="d-flex justify-content-between">
+                                        <small>0</small>
+                                        <small>40</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- Отношение долга к доходу -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-balance-scale me-1"></i>Отношение долга к доходу
+                                        <span class="slider-value" id="dti-value">0.30</span>
+                                    </label>
+                                    <input type="range" class="form-range feature-slider" 
+                                           id="dti-slider" min="0" max="1" step="0.01" value="0.3"
+                                           oninput="updateSliderValue('dti', this.value)">
+                                    <div class="d-flex justify-content-between">
+                                        <small>0</small>
+                                        <small>1</small>
+                                    </div>
+                                </div>
+                                
+                                <!-- Дефолт в истории -->
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>Дефолт в истории
+                                    </label>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="has-default-switch" onchange="toggleDefault()">
+                                        <label class="form-check-label" for="has-default-switch">
+                                            <span id="default-status">Нет дефолта</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <!-- Цель кредита -->
+                                <div class="mb-4">
+                                    <label class="form-label">
+                                        <i class="fas fa-bullseye me-1"></i>Цель кредита
+                                    </label>
+                                    <select class="form-select" id="loan-purpose-select">
+                                        <option value="car">Автомобиль</option>
+                                        <option value="home" selected>Недвижимость</option>
+                                        <option value="education">Образование</option>
+                                        <option value="business">Бизнес</option>
+                                        <option value="other">Другое</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Кнопки -->
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-primary btn-lg" onclick="makePrediction()">
+                                        <i class="fas fa-bolt me-2"></i>Оценить кредитоспособность
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="generateRandom()">
+                                        <i class="fas fa-random me-2"></i>Случайный пример
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Результаты -->
+                <div class="col-lg-6">
+                    <div class="sticky-top" style="top: 20px;">
+                        <!-- Индикатор -->
+                        <div class="card mb-4 result-card" id="result-indicator">
+                            <div class="card-body text-center">
+                                <div class="prediction-gauge mb-3">
+                                    <svg width="200" height="200" viewBox="0 0 200 200">
+                                        <!-- Фон -->
+                                        <circle cx="100" cy="100" r="90" 
+                                                class="gauge-background" 
+                                                stroke-width="20" fill="none"/>
+                                        <!-- Заполнение -->
+                                        <circle cx="100" cy="100" r="90" 
+                                                id="gauge-fill"
+                                                stroke="#667eea" stroke-width="20" 
+                                                fill="none" stroke-dasharray="565.48"
+                                                stroke-dashoffset="282.74"
+                                                transform="rotate(-90 100 100)"/>
+                                        <!-- Текст -->
+                                        <text x="100" y="100" text-anchor="middle" 
+                                              dy="5" class="gauge-text" id="gauge-percent">
+                                            50%
+                                        </text>
+                                        <text x="100" y="130" text-anchor="middle" 
+                                              class="small" id="gauge-label">
+                                            Вероятность
+                                        </text>
+                                    </svg>
+                                </div>
+                                
+                                <h3 id="result-title" class="mb-3">Заполните форму</h3>
+                                <p id="result-message" class="lead">
+                                    Настройте параметры и нажмите "Оценить кредитоспособность"
+                                </p>
+                                
+                                <div class="mt-4" id="result-details" style="display: none;">
+                                    <div class="row">
+                                        <div class="col-6">
+                                            <div class="card bg-light">
+                                                <div class="card-body text-center">
+                                                    <h6 class="card-title">Риск</h6>
+                                                    <h4 id="risk-level" class="mb-0">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="card bg-light">
+                                                <div class="card-body text-center">
+                                                    <h6 class="card-title">Время обработки</h6>
+                                                    <h4 id="processing-time" class="mb-0">-</h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Объяснение -->
+                                    <div class="mt-4" id="explanation-section" style="display: none;">
+                                        <h6><i class="fas fa-info-circle me-2"></i>Объяснение решения</h6>
+                                        <div id="explanation-content" class="small">
+                                            <!-- Динамически заполняется -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- История запросов -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-history me-2"></i>История запросов
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="request-history">
+                                    <p class="text-muted small mb-0">Здесь будет отображаться история ваших запросов</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Техническая информация -->
+            <div class="card mt-4">
+                <div class="card-body">
+                    <h6><i class="fas fa-microchip me-2"></i>Технические детали</h6>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p class="small mb-1"><strong>Модель:</strong> <span id="tech-model">-</span></p>
+                            <p class="small mb-1"><strong>Формат:</strong> <span id="tech-format">-</span></p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="small mb-1"><strong>Время инференса:</strong> <span id="tech-inference">-</span></p>
+                            <p class="small mb-1"><strong>Размер модели:</strong> <span id="tech-size">-</span></p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="small mb-1"><strong>Оптимизации:</strong> <span id="tech-optimizations">-</span></p>
+                            <p class="small mb-1"><strong>Версия API:</strong> <span id="tech-version">-</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Форматирование чисел
+        function formatNumber(num) {
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+        
+        // Обновление значений слайдеров
+        function updateSliderValue(type, value) {
+            let displayValue;
+            
+            switch(type) {
+                case 'age':
+                    displayValue = value;
+                    break;
+                case 'income':
+                    displayValue = formatNumber(value);
+                    break;
+                case 'credit-score':
+                    displayValue = value;
+                    break;
+                case 'loan-amount':
+                    displayValue = formatNumber(value);
+                    break;
+                case 'employment-years':
+                    displayValue = value;
+                    break;
+                case 'dti':
+                    displayValue = parseFloat(value).toFixed(2);
+                    break;
+            }
+            
+            document.getElementById(`${type}-value`).textContent = displayValue;
+        }
+        
+        // Переключение дефолта
+        function toggleDefault() {
+            const checkbox = document.getElementById('has-default-switch');
+            const status = document.getElementById('default-status');
+            
+            if (checkbox.checked) {
+                status.textContent = 'Есть дефолт';
+                status.className = 'text-danger';
+            } else {
+                status.textContent = 'Нет дефолта';
+                status.className = 'text-success';
+            }
+        }
+        
+        // Генерация случайных данных
+        function generateRandom() {
+            const randomAge = Math.floor(Math.random() * (60 - 20 + 1)) + 20;
+            const randomIncome = Math.floor(Math.random() * (150000 - 30000 + 1)) + 30000;
+            const randomCreditScore = Math.floor(Math.random() * (800 - 500 + 1)) + 500;
+            const randomLoanAmount = Math.floor(Math.random() * (50000 - 5000 + 1)) + 5000;
+            const randomEmploymentYears = Math.floor(Math.random() * (30 - 1 + 1)) + 1;
+            const randomDTI = (Math.random() * 0.5 + 0.1).toFixed(2);
+            const randomHasDefault = Math.random() > 0.7;
+            const purposes = ['car', 'home', 'education', 'business', 'other'];
+            const randomPurpose = purposes[Math.floor(Math.random() * purposes.length)];
+            
+            // Установка значений
+            document.getElementById('age-slider').value = randomAge;
+            document.getElementById('income-slider').value = randomIncome;
+            document.getElementById('credit-score-slider').value = randomCreditScore;
+            document.getElementById('loan-amount-slider').value = randomLoanAmount;
+            document.getElementById('employment-years-slider').value = randomEmploymentYears;
+            document.getElementById('dti-slider').value = randomDTI;
+            document.getElementById('has-default-switch').checked = randomHasDefault;
+            document.getElementById('loan-purpose-select').value = randomPurpose;
+            
+            // Обновление отображения
+            updateSliderValue('age', randomAge);
+            updateSliderValue('income', randomIncome);
+            updateSliderValue('credit-score', randomCreditScore);
+            updateSliderValue('loan-amount', randomLoanAmount);
+            updateSliderValue('employment-years', randomEmploymentYears);
+            updateSliderValue('dti', randomDTI);
+            toggleDefault();
+            
+            console.log('Сгенерированы случайные данные');
+        }
+        
+        // Сделать предсказание
+        async function makePrediction() {
+            // Сбор данных из формы
+            const requestData = {
+                age: parseInt(document.getElementById('age-slider').value),
+                income: parseFloat(document.getElementById('income-slider').value),
+                credit_score: parseInt(document.getElementById('credit-score-slider').value),
+                loan_amount: parseFloat(document.getElementById('loan-amount-slider').value),
+                employment_years: parseInt(document.getElementById('employment-years-slider').value),
+                debt_to_income: parseFloat(document.getElementById('dti-slider').value),
+                has_default: document.getElementById('has-default-switch').checked,
+                loan_purpose: document.getElementById('loan-purpose-select').value
+            };
+            
+            // Показать индикатор загрузки
+            showLoading();
+            
+            try {
+                // Отправка запроса
+                const response = await fetch('/api/v1/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                // Обновление UI с результатами
+                updateResultsUI(result);
+                
+                // Добавление в историю
+                addToHistory(requestData, result);
+                
+                // Обновление технической информации
+                updateTechnicalInfo(result);
+                
+            } catch (error) {
+                console.error('Ошибка:', error);
+                showError('Ошибка при выполнении запроса: ' + error.message);
+            }
+        }
+        
+        // Показать индикатор загрузки
+        function showLoading() {
+            const resultCard = document.getElementById('result-indicator');
+            resultCard.classList.remove('result-approved', 'result-rejected');
+            
+            document.getElementById('result-title').innerHTML = 
+                '<i class="fas fa-spinner fa-spin me-2"></i>Обработка...';
+            document.getElementById('result-message').textContent = 
+                'Нейронная сеть анализирует данные...';
+            
+            // Анимация индикатора
+            const gauge = document.getElementById('gauge-fill');
+            gauge.style.strokeDashoffset = '282.74'; // 50%
+            
+            document.getElementById('gauge-percent').textContent = '...';
+            document.getElementById('gauge-label').textContent = 'Анализ';
+            
+            document.getElementById('result-details').style.display = 'none';
+        }
+        
+        // Обновление UI с результатами
+        function updateResultsUI(result) {
+            const probability = result.probability;
+            const approval = result.prediction === 1;
+            const riskLevel = result.risk_level;
+            const recommendation = result.recommendation;
+            
+            // Обновление индикатора
+            const gauge = document.getElementById('gauge-fill');
+            const dashoffset = 282.74 * (1 - probability); // 282.74 = 565.48 * 0.5
+            gauge.style.strokeDashoffset = dashoffset;
+            
+            document.getElementById('gauge-percent').textContent = 
+                `${Math.round(probability * 100)}%`;
+            document.getElementById('gauge-label').textContent = 'Вероятность одобрения';
+            
+            // Обновление заголовка и сообщения
+            const resultCard = document.getElementById('result-indicator');
+            if (approval) {
+                resultCard.classList.add('result-approved');
+                resultCard.classList.remove('result-rejected');
+                
+                document.getElementById('result-title').innerHTML = 
+                    '<i class="fas fa-check-circle me-2 text-success"></i>Кредит одобрен!';
+                document.getElementById('result-message').innerHTML = 
+                    `<span class="text-success">${recommendation}</span>`;
+            } else {
+                resultCard.classList.add('result-rejected');
+                resultCard.classList.remove('result-approved');
+                
+                document.getElementById('result-title').innerHTML = 
+                    '<i class="fas fa-times-circle me-2 text-danger"></i>Кредит отклонен';
+                document.getElementById('result-message').innerHTML = 
+                    `<span class="text-danger">${recommendation}</span>`;
+            }
+            
+            // Обновление деталей
+            document.getElementById('risk-level').textContent = 
+                riskLevel === 'high' ? 'Высокий' : 
+                riskLevel === 'medium' ? 'Средний' : 'Низкий';
+            
+            document.getElementById('risk-level').className = 
+                riskLevel === 'high' ? 'text-danger' : 
+                riskLevel === 'medium' ? 'text-warning' : 'text-success';
+            
+            document.getElementById('processing-time').textContent = 
+                `${result.processing_time_ms.toFixed(1)} мс`;
+            
+            // Обновление объяснения
+            if (result.explanation && result.explanation.features) {
+                updateExplanation(result.explanation);
+                document.getElementById('explanation-section').style.display = 'block';
+            }
+            
+            // Показать детали
+            document.getElementById('result-details').style.display = 'block';
+        }
+        
+        // Обновление объяснения
+        function updateExplanation(explanation) {
+            const container = document.getElementById('explanation-content');
+            let html = '';
+            
+            if (explanation.method === 'simple') {
+                html = '<p class="mb-2">Основные факторы, повлиявшие на решение:</p>';
+                explanation.features.slice(0, 3).forEach(feature => {
+                    const impact = Math.abs(feature.contribution).toFixed(2);
+                    const direction = feature.contribution > 0 ? 'положительно' : 'отрицательно';
+                    
+                    html += `
+                        <div class="mb-2">
+                            <strong>${feature.name}:</strong> ${feature.value}
+                            <span class="badge bg-${feature.contribution > 0 ? 'success' : 'danger'} ms-2">
+                                ${direction} (${impact})
+                            </span>
+                        </div>
+                    `;
+                });
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Показать ошибку
+        function showError(message) {
+            const resultCard = document.getElementById('result-indicator');
+            resultCard.classList.remove('result-approved', 'result-rejected');
+            
+            document.getElementById('result-title').innerHTML = 
+                '<i class="fas fa-exclamation-triangle me-2 text-danger"></i>Ошибка';
+            document.getElementById('result-message').textContent = message;
+            
+            document.getElementById('gauge-percent').textContent = '!';
+            document.getElementById('gauge-label').textContent = 'Ошибка';
+        }
+        
+        // Добавление в историю
+        function addToHistory(requestData, result) {
+            const historyContainer = document.getElementById('request-history');
+            
+            const historyItem = document.createElement('div');
+            historyItem.className = 'mb-2 pb-2 border-bottom';
+            
+            const time = new Date().toLocaleTimeString();
+            const approved = result.prediction === 1;
+            
+            historyItem.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <small class="text-muted">${time}</small>
+                        <div class="small">
+                            <strong>Кредит:</strong> ${formatNumber(requestData.loan_amount)} руб.
+                            <span class="badge bg-${approved ? 'success' : 'danger'} ms-2">
+                                ${approved ? 'Одобрено' : 'Отклонено'}
+                            </span>
+                        </div>
+                    </div>
+                    <small class="text-muted">${Math.round(result.probability * 100)}%</small>
+                </div>
+            `;
+            
+            // Добавить в начало истории
+            if (historyContainer.firstChild) {
+                historyContainer.insertBefore(historyItem, historyContainer.firstChild);
+            } else {
+                historyContainer.appendChild(historyItem);
+            }
+            
+            // Ограничить историю 10 элементами
+            const items = historyContainer.children;
+            if (items.length > 10) {
+                historyContainer.removeChild(items[items.length - 1]);
+            }
+        }
+        
+        // Обновление технической информации
+        async function updateTechnicalInfo(result) {
+            try {
+                const response = await fetch('/api/v1/models/info');
+                const data = await response.json();
+                
+                if (data.model_info) {
+                    document.getElementById('tech-model').textContent = 'Neural Network';
+                    document.getElementById('tech-format').textContent = 'ONNX';
+                    document.getElementById('tech-version').textContent = 
+                        data.model_info.version || '2.0.0';
+                    document.getElementById('tech-inference').textContent = 
+                        `${result.processing_time_ms.toFixed(1)} мс`;
+                    
+                    // Получить размер модели
+                    const sizeResponse = await fetch('/health');
+                    const healthData = await sizeResponse.json();
+                    
+                    document.getElementById('tech-optimizations').textContent = 
+                        'Quantization + Pruning';
+                }
+            } catch (error) {
+                console.error('Ошибка при получении технической информации:', error);
+            }
+        }
+        
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Установить начальные значения
+            updateSliderValue('age', 30);
+            updateSliderValue('income', 50000);
+            updateSliderValue('credit-score', 650);
+            updateSliderValue('loan-amount', 10000);
+            updateSliderValue('employment-years', 5);
+            updateSliderValue('dti', 0.3);
+            
+            // Загрузить техническую информацию
+            updateTechnicalInfo({});
+            
+            console.log('Демо-страница загружена');
+        });
+    </script>
+</body>
+</html>

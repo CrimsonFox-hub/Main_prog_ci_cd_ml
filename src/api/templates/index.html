@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credit Scoring System - Демонстрация</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            margin-top: 50px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        .service-card {
+            border: none;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-healthy {
+            background-color: #28a745;
+        }
+        .status-unhealthy {
+            background-color: #dc3545;
+        }
+        .model-badge {
+            font-size: 0.8em;
+            padding: 3px 8px;
+            border-radius: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-container">
+            <div class="text-center mb-5">
+                <h1 class="display-4 mb-3">
+                    <i class="fas fa-robot me-3"></i>Credit Scoring System
+                </h1>
+                <p class="lead">Промышленная система оценки кредитоспособности с использованием нейронных сетей и MLOps</p>
+            </div>
+            
+            <!-- Статус системы -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="card-title mb-1">
+                                <span class="status-indicator status-healthy"></span>
+                                Статус системы
+                            </h5>
+                            <p class="text-muted mb-0">Все сервисы работают в штатном режиме</p>
+                        </div>
+                        <div id="system-status"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Основные сервисы -->
+            <h3 class="mb-4">
+                <i class="fas fa-server me-2"></i>Сервисы системы
+            </h3>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card service-card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-bolt me-2"></i>API Скороринга
+                            </h5>
+                            <p class="card-text">Основной API для оценки кредитоспособности</p>
+                            <a href="http://localhost:8000/api/docs" target="_blank" class="btn btn-light">
+                                OpenAPI Docs <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                            <a href="/demo" class="btn btn-outline-light ms-2">
+                                Демо <i class="fas fa-play ms-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card service-card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-chart-line me-2"></i>MLflow
+                            </h5>
+                            <p class="card-text">Трекинг экспериментов и версий моделей</p>
+                            <a href="http://localhost:5000" target="_blank" class="btn btn-light">
+                                Открыть <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card service-card bg-info text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <i class="fas fa-tachometer-alt me-2"></i>Grafana
+                            </h5>
+                            <p class="card-text">Дашборды для мониторинга метрик</p>
+                            <a href="http://localhost:3000" target="_blank" class="btn btn-light">
+                                Открыть <i class="fas fa-external-link-alt ms-1"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Второй ряд сервисов -->
+            <div class="row mt-4">
+                <div class="col-md-3">
+                    <div class="card service-card">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="fas fa-database me-2"></i>MinIO
+                            </h6>
+                            <p class="card-text small">Объектное хранилище</p>
+                            <a href="http://localhost:9001" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Console
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="card service-card">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="fas fa-file-alt me-2"></i>Loki
+                            </h6>
+                            <p class="card-text small">Хранение логов</p>
+                            <a href="http://localhost:3100" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Logs
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="card service-card">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="fas fa-chart-bar me-2"></i>Prometheus
+                            </h6>
+                            <p class="card-text small">Сбор метрик</p>
+                            <a href="http://localhost:9090" target="_blank" class="btn btn-sm btn-outline-primary">
+                                Metrics
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="card service-card">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="fas fa-database me-2"></i>PostgreSQL
+                            </h6>
+                            <p class="card-text small">Основная БД</p>
+                            <span class="badge bg-secondary">localhost:5432</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Информация о модели -->
+            <div class="card mt-5">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-brain me-2"></i>Информация о модели
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Архитектура модели</h6>
+                            <ul class="list-unstyled">
+                                <li><strong>Тип:</strong> Нейронная сеть (PyTorch)</li>
+                                <li><strong>Формат:</strong> ONNX для production</li>
+                                <li><strong>Версия:</strong> 2.0.0</li>
+                                <li><strong>Размер входных данных:</strong> <span id="input-size">-</span></li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Оптимизации</h6>
+                            <ul class="list-unstyled">
+                                <li><span class="badge model-badge bg-success">Quantization</span> 8-bit</li>
+                                <li><span class="badge model-badge bg-info">Pruning</span> 20% весов</li>
+                                <li><span class="badge model-badge bg-warning">ONNX</span> Optimized</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Быстрые действия -->
+            <div class="card mt-4">
+                <div class="card-body text-center">
+                    <h5 class="card-title mb-4">Быстрые действия</h5>
+                    <div class="btn-group" role="group">
+                        <a href="/demo" class="btn btn-primary btn-lg">
+                            <i class="fas fa-play me-2"></i>Запустить демо
+                        </a>
+                        <a href="/services" class="btn btn-outline-primary btn-lg ms-2">
+                            <i class="fas fa-list me-2"></i>Все сервисы
+                        </a>
+                        <a href="/monitoring" class="btn btn-outline-primary btn-lg ms-2">
+                            <i class="fas fa-chart-line me-2"></i>Мониторинг
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Футер -->
+            <div class="mt-5 pt-4 border-top text-center text-muted">
+                <p class="mb-1">
+                    Credit Scoring System v2.0 | 
+                    <i class="fas fa-code me-1"></i>Powered by PyTorch & ONNX |
+                    <i class="fas fa-cloud me-1"></i>Deployed with MLOps
+                </p>
+                <p class="small mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Все сервисы работают на localhost. Для продакшена настройте Yandex Cloud.
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Проверка статуса системы
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                document.getElementById('system-status').innerHTML = `
+                    <span class="badge bg-success">Healthy</span>
+                    <small class="text-muted ms-2">v${data.version}</small>
+                `;
+                
+                // Обновить информацию о модели
+                const modelInfo = await fetch('/api/v1/models/info');
+                const modelData = await modelInfo.json();
+                
+                if (modelData.model_info && modelData.model_info.input_shape) {
+                    document.getElementById('input-size').textContent = 
+                        modelData.model_info.input_shape[1];
+                }
+                
+            } catch (error) {
+                document.getElementById('system-status').innerHTML = `
+                    <span class="badge bg-danger">Unhealthy</span>
+                    <small class="text-muted ms-2">Connection error</small>
+                `;
+            }
+        }
+        
+        // Автоматическое обновление статуса каждые 30 секунд
+        checkSystemStatus();
+        setInterval(checkSystemStatus, 30000);
+        
+        // Показать уведомление при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Credit Scoring System Demo loaded');
+        });
+    </script>
+</body>
+</html>
