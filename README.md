@@ -21,7 +21,7 @@ CI/CD с GitHub Actions
 Infrastructure as Code с Terraform
 
 🏗️ Архитектура системы
-text
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                     Пользовательские запросы                │
 └──────────────────────┬──────────────────────────────────────┘
@@ -45,14 +45,15 @@ text
     │   MLflow           │  └────────────────┘
     │   Трекинг моделей  │
     └────────────────────┘
-🚀 Быстрый старт (Локальная установка)
-Предварительные требования
+```
+🚀 Быстрый старт (Локальная установка)\
+Предварительные требования\
 Windows: Docker Desktop, Git, Python 3.9+
 
 Linux/Mac: Docker Engine, Docker Compose, Git, Python 3.9+
 
-Установка и запуск (Windows)
-powershell
+Установка и запуск (Windows)\
+```powershell
 # 1. Клонируйте репозиторий
 git clone https://github.com/CrimsonFox-hub/Main_prog_ci_cd_ml.git
 cd Main_prog_ci_cd_ml
@@ -65,8 +66,9 @@ make run-local
 
 # ИЛИ для полного пайплайна
 make full-pipeline
+```
 Установка и запуск (Linux/Mac)
-bash
+```bash
 # 1. Клонируйте репозиторий
 git clone https://github.com/CrimsonFox-hub/Main_prog_ci_cd_ml.git
 cd Main_prog_ci_cd_ml
@@ -527,47 +529,18 @@ curl http://localhost:9090/-/healthy
 
 # Проверьте метрики
 curl http://localhost:8000/metrics | head -20
-🤝 Вклад в проект
-Мы приветствуем вклады! Пожалуйста, ознакомьтесь с:
+```
+Скриншоты 
 
-Руководством по стилю кода (CONTRIBUTING.md)
+Главный экран
+<img width="1124" height="909" alt="image" src="https://github.com/user-attachments/assets/2156d7d2-6b72-4a9e-b408-49fdf5a0b782" />
 
-Политикой ветвления (Git Flow)
+Модель
+<img width="1069" height="930" alt="image" src="https://github.com/user-attachments/assets/194cba5d-3068-414f-aaa0-5075ec826547" />
 
-Шаблоном Pull Request
+Графана (пока без граиков но с полной настройкой
+<img width="1869" height="414" alt="image" src="https://github.com/user-attachments/assets/6eb3e126-a213-4572-b326-25a386efcf62" />
 
-Процесс внесения изменений:
-Форкните репозиторий
+<img width="1866" height="249" alt="image" src="https://github.com/user-attachments/assets/096a0571-7284-437c-9f1c-cdc23f68d302" />
 
-Создайте feature ветку (git checkout -b feature/amazing-feature)
-
-Закоммитьте изменения (git commit -m 'Add amazing feature')
-
-Запушьте ветку (git push origin feature/amazing-feature)
-
-Откройте Pull Request
-
-📄 Лицензия
-Этот проект лицензирован под MIT License - смотрите файл LICENSE для деталей.
-
-📞 Поддержка
-Issues: GitHub Issues
-
-Discussions: GitHub Discussions
-
-Email: [ваш-email]@example.com
-
-🙏 Благодарности
-Команда разработчиков за усердную работу
-
-Сообщество Open Source за прекрасные инструменты
-
-Все контрибьюторы проекта
-
-Начните использовать Credit Scoring System прямо сейчас!
-
-bash
-git clone https://github.com/CrimsonFox-hub/Main_prog_ci_cd_ml.git
-cd Main_prog_ci_cd_ml
-make run-local
-Откройте http://localhost:8000 и начните тестирование!
+<img width="1862" height="338" alt="image" src="https://github.com/user-attachments/assets/796bd405-36ab-4ef9-b1a1-5d672fc1f7e7" />
